@@ -1,0 +1,385 @@
+// ============================================================
+//  MS1208-M1 Temperature Logger — Google Apps Script
+//  ✅ Auto-archive: daily rows move to "4 April 2026" sheets
+//  ✅ Deduplication: blocks duplicate timestamps on write
+//  ✅ todayOnly flag: fast Sheet1-only path for dashboard default load
+// ============================================================
+
+var MAIN_SHEET = "Sheet1";
+var TZ = Session.getScriptTimeZone();
+var HEADERS = ["Timestamp", "CH1 (Kettle 1) °C", "CH2 (Kettle 2) °C", "CH3 (Kettle 3) °C"];
+
+// ─── ROUTING ─────────────────────────────────────────────────────────────────
+
+function doGet(e) {
+  try {
+    var ss    = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(MAIN_SHEET);
+
+    // ── WRITE: ESP8266 sending temperature data ───────────────────────────────
+    if (e.parameter && e.parameter.temp1 !== undefined) {
+      var t1 = parseFloat(e.parameter.temp1) || 0;
+      var t2 = parseFloat(e.parameter.temp2) || 0;
+      var t3 = parseFloat(e.parameter.temp3) || 0;
+
+      var now       = new Date();
+      var timestamp = Utilities.formatDate(now, TZ, "dd/MM/yyyy HH:mm:ss");
+
+      // ── DEDUPLICATION: skip if last row has the same timestamp ──────────────
+      // This prevents duplicate entries caused by ESP retries or network issues.
+      var lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        var lastTs = sheet.getRange(lastRow, 1).getValue().toString().trim();
+        if (lastTs === timestamp) {
+          // Same second — update values in-place instead of appending a duplicate
+          sheet.getRange(lastRow, 2).setValue(t1);
+          sheet.getRange(lastRow, 3).setValue(t2);
+          sheet.getRange(lastRow, 4).setValue(t3);
+          sheet.getRange("K2").setValue("ONLINE");
+          return ContentService.createTextOutput("OK_UPDATED").setMimeType(ContentService.MimeType.TEXT);
+        }
+      }
+
+      // Append new row
+      sheet.appendRow([timestamp, t1, t2, t3]);
+
+      // Update live status cells
+      sheet.getRange("K2").setValue("ONLINE");
+      sheet.getRange("L2").setFormula("=INDEX(B:B,COUNTA(B:B))");
+      sheet.getRange("M2").setFormula("=INDEX(C:C,COUNTA(C:C))");
+      sheet.getRange("N2").setFormula("=INDEX(D:D,COUNTA(D:D))");
+
+      return ContentService.createTextOutput("OK").setMimeType(ContentService.MimeType.TEXT);
+    }
+
+    // ── READ: Dashboard requesting data ──────────────────────────────────────
+    var now2 = new Date();
+    var startDate, endDate;
+
+    if (e.parameter && e.parameter.start && e.parameter.end) {
+      startDate = parseSheetTimestamp(e.parameter.start);
+      endDate   = parseSheetTimestamp(e.parameter.end);
+    } else {
+      endDate   = now2;
+      startDate = new Date(now2.getTime() - 24 * 60 * 60 * 1000);
+    }
+
+    // todayOnly=true → only read Sheet1 (fast path, no archive search)
+    var todayOnly = (e.parameter && e.parameter.todayOnly === "true");
+
+    var result = [];
+    var headerAdded = false;
+
+    if (todayOnly) {
+      // Fast path: only Sheet1 — no archive search needed
+      var outFast = readRowsFromSheet(sheet, startDate, endDate, [], false);
+      result = outFast.rows;
+    } else {
+      // Full path: Sheet1 + matching archive sheets
+      var sheetNames = getSheetsForRange(ss, startDate, endDate);
+      for (var s = 0; s < sheetNames.length; s++) {
+        var sh = ss.getSheetByName(sheetNames[s]);
+        if (!sh) continue;
+        var outSh = readRowsFromSheet(sh, startDate, endDate, result, headerAdded);
+        result      = outSh.rows;
+        headerAdded = outSh.headerAdded;
+      }
+    }
+
+    // Build statusInfo from K2, L2, M2, N2
+    var statusInfo = buildStatusInfo(sheet);
+
+    return ContentService.createTextOutput(
+      JSON.stringify({ values: result, statusInfo: statusInfo })
+    ).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ error: err.toString() })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ─── READ ROWS FROM A SINGLE SHEET ───────────────────────────────────────────
+
+function readRowsFromSheet(sh, startDate, endDate, existingRows, headerAdded) {
+  var rows = existingRows || [];
+  var numRows = sh.getLastRow();
+  if (numRows < 2) return { rows: rows, headerAdded: headerAdded };
+
+  var data    = sh.getDataRange().getValues();
+  var numCols = data[0].length;  // use actual column count, never hardcode
+
+  if (!headerAdded) {
+    rows.push(data[0].slice(0, numCols));
+    headerAdded = true;
+  }
+
+  for (var i = 1; i < numRows; i++) {
+    var rowTs = parseSheetTimestamp(data[i][0].toString());
+    if (!rowTs) continue;
+    if (rowTs >= startDate && rowTs <= endDate) {
+      rows.push(data[i].slice(0, numCols));
+    }
+  }
+
+  return { rows: rows, headerAdded: headerAdded };
+}
+
+// ─── DETERMINE WHICH SHEETS TO READ ─────────────────────────────────────────
+
+function getSheetsForRange(ss, startDate, endDate) {
+  var today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+  var names = [];
+
+  // Always include Sheet1 if the range overlaps with today
+  var endDateStr = Utilities.formatDate(endDate, TZ, "yyyy-MM-dd");
+  if (endDateStr >= today) names.push(MAIN_SHEET);
+
+  // Include archive sheets whose date falls within startDate..endDate
+  var allSheets = ss.getSheets();
+  for (var i = 0; i < allSheets.length; i++) {
+    var nm = allSheets[i].getName();
+    if (nm === MAIN_SHEET) continue;
+    var sheetDate = parseDateLabel(nm);    // "4 April 2026" → "2026-04-04"
+    if (!sheetDate) continue;
+    var startDateStr = Utilities.formatDate(startDate, TZ, "yyyy-MM-dd");
+    if (sheetDate >= startDateStr && sheetDate <= endDateStr) {
+      names.push(nm);
+    }
+  }
+
+  return names;
+}
+
+// ─── STATUS INFO ─────────────────────────────────────────────────────────────
+
+function buildStatusInfo(sheet) {
+  var k2Val = sheet.getRange("K2").getValue();
+  var l2Val = sheet.getRange("L2").getValue();
+  var m2Val = sheet.getRange("M2").getValue();
+  var n2Val = sheet.getRange("N2").getValue();
+
+  var lastTimestamp = "";
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) lastTimestamp = sheet.getRange(lastRow, 1).getValue().toString();
+
+  return {
+    status:        k2Val.toString(),
+    temp1:         l2Val,
+    temp2:         m2Val,
+    temp3:         n2Val,
+    lastTimestamp: lastTimestamp
+  };
+}
+
+// ─── AUTO-ARCHIVE (runs via daily time-driven trigger) ────────────────────────
+//
+//  Archives all rows older than today from Sheet1 into per-day archive sheets
+//  named like "4 April 2026". Deletes those rows from Sheet1 after archiving.
+//  Run createTriggers() once manually to install the daily schedule.
+
+function archivePastDays() {
+  var ss        = SpreadsheetApp.getActiveSpreadsheet();
+  var mainSheet = ss.getSheetByName(MAIN_SHEET);
+  if (!mainSheet) return;
+
+  var today = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd");
+  var data  = mainSheet.getDataRange().getValues();
+  if (data.length <= 1) return;
+
+  // Group past rows by date
+  var archiveMap = {};      // "yyyy-MM-dd" → array of row arrays
+  var keepRows   = [data[0]]; // always keep header
+
+  for (var i = 1; i < data.length; i++) {
+    var row   = data[i];
+    var tsRaw = row[0] ? row[0].toString() : "";
+    var tsObj = parseSheetTimestamp(tsRaw);
+    if (!tsObj) { keepRows.push(row); continue; }
+
+    var dateStr = Utilities.formatDate(tsObj, TZ, "yyyy-MM-dd");
+
+    if (dateStr >= today) {
+      keepRows.push(row);    // today's data stays in Sheet1
+    } else {
+      if (!archiveMap[dateStr]) archiveMap[dateStr] = [];
+      archiveMap[dateStr].push(row);
+    }
+  }
+
+  // Write each past date's rows to its own named archive sheet
+  for (var dateKey in archiveMap) {
+    var label        = formatDateLabel(dateKey);          // e.g. "4 April 2026"
+    var archiveSheet = ss.getSheetByName(label);
+
+    if (!archiveSheet) {
+      archiveSheet = ss.insertSheet(label);
+      // Don't write a hardcoded header — copy the actual header row from Sheet1
+      var mainHdr = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues()[0];
+      archiveSheet.appendRow(mainHdr);
+      archiveSheet.getRange(1, 1, 1, mainHdr.length).setFontWeight("bold");
+      ss.setActiveSheet(archiveSheet);
+      ss.moveActiveSheet(ss.getNumSheets());
+    }
+
+    // Deduplication: build set of existing timestamps in this archive sheet
+    var existingData = archiveSheet.getDataRange().getValues();
+    var existingSet  = {};
+    for (var r = 1; r < existingData.length; r++) {
+      existingSet[existingData[r][0].toString().trim()] = true;
+    }
+
+    var rowsToAdd = archiveMap[dateKey].filter(function(row) {
+      return !existingSet[row[0].toString().trim()];
+    });
+
+    if (rowsToAdd.length > 0) {
+      // Use actual column count from the rows being written
+      var numColsArchive = rowsToAdd[0].length;
+      archiveSheet.getRange(
+        archiveSheet.getLastRow() + 1, 1,
+        rowsToAdd.length, numColsArchive
+      ).setValues(rowsToAdd);
+    }
+
+    Logger.log("Archived " + rowsToAdd.length + " rows → " + label);
+  }
+
+  // Rewrite Sheet1 with only today's rows
+  // Use actual column count from the data, NOT a hardcoded constant
+  var numColsMain = data[0].length;
+  mainSheet.getRange(1, 1, mainSheet.getLastRow(), numColsMain).clearContent();
+  if (keepRows.length > 0) {
+    mainSheet.getRange(1, 1, keepRows.length, numColsMain).setValues(keepRows);
+    mainSheet.getRange(1, 1, 1, numColsMain).setFontWeight("bold");
+  }
+
+  Logger.log("Archive done. Sheet1 has " + (keepRows.length - 1) + " rows remaining.");
+}
+
+// ─── CLEAN UP DUPLICATES IN EXISTING DATA (run once manually if needed) ──────
+//
+//  Scans Sheet1 (and all archive sheets) and removes rows that share an
+//  identical timestamp with the previous row. Safe to run multiple times.
+
+function removeDuplicatesFromAllSheets() {
+  var ss        = SpreadsheetApp.getActiveSpreadsheet();
+  var allSheets = ss.getSheets();
+
+  for (var s = 0; s < allSheets.length; s++) {
+    var sh   = allSheets[s];
+    var data = sh.getDataRange().getValues();
+    if (data.length <= 1) continue;
+
+    // Use the ACTUAL column count from the sheet — never hardcode
+    var numCols = data[0].length;
+
+    var cleaned = [data[0]];
+    var seenTs  = {};
+
+    for (var i = 1; i < data.length; i++) {
+      var ts = data[i][0].toString().trim();
+      if (ts === "") continue;  // skip blank rows
+      if (!seenTs[ts]) {
+        seenTs[ts] = true;
+        cleaned.push(data[i]);
+      }
+    }
+
+    var removed = data.length - cleaned.length;
+    if (removed > 0) {
+      // Clear only columns A-D (data columns), NOT the whole sheet.
+      // This preserves K2/L2/M2/N2 status cells and any other formulas.
+      sh.getRange(1, 1, sh.getLastRow(), numCols).clearContent();
+      sh.getRange(1, 1, cleaned.length, numCols).setValues(cleaned);
+      Logger.log(sh.getName() + ": removed " + removed + " duplicate rows.");
+    } else {
+      Logger.log(sh.getName() + ": no duplicates found.");
+    }
+  }
+}
+
+// ─── DEVICE STATUS CHECK (1-minute trigger) ───────────────────────────────────
+
+function checkDeviceStatus() {
+  try {
+    var ss    = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(MAIN_SHEET);
+    if (!sheet) return;
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) { sheet.getRange("K2").setValue("OFFLINE"); return; }
+
+    var lastTsRaw = sheet.getRange(lastRow, 1).getValue();
+    var lastTs    = new Date(lastTsRaw);
+    var diffSecs  = (new Date().getTime() - lastTs.getTime()) / 1000;
+
+    sheet.getRange("K2").setValue(diffSecs > 60 ? "OFFLINE" : "ONLINE");
+
+  } catch (err) {
+    Logger.log("checkDeviceStatus error: " + err.toString());
+  }
+}
+
+// ─── TRIGGERS (run once manually to install) ──────────────────────────────────
+
+function createTriggers() {
+  // Remove all existing triggers
+  ScriptApp.getProjectTriggers().forEach(function(t) { ScriptApp.deleteTrigger(t); });
+
+  // checkDeviceStatus every 1 minute
+  ScriptApp.newTrigger("checkDeviceStatus")
+    .timeBased().everyMinutes(1).create();
+
+  // archivePastDays every day at 00:05 AM
+  ScriptApp.newTrigger("archivePastDays")
+    .timeBased().everyDays(1).atHour(0).nearMinute(5).create();
+
+  Logger.log("Triggers created: checkDeviceStatus (1 min) + archivePastDays (daily 00:05)");
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+// Parse "dd/MM/yyyy HH:mm:ss" → Date
+function parseSheetTimestamp(str) {
+  if (!str) return null;
+  str = str.toString().trim();
+  var m = str.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  if (m) return new Date(m[3], m[2]-1, m[1], m[4], m[5], m[6]);
+  var d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// "2026-04-04" → "4 April 2026"
+function formatDateLabel(dateStr) {
+  var parts   = dateStr.split("-");
+  var d       = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  var months  = ["January","February","March","April","May","June",
+                 "July","August","September","October","November","December"];
+  return d.getDate() + " " + months[d.getMonth()] + " " + d.getFullYear();
+}
+
+// "4 April 2026" → "2026-04-04" (returns null if not a valid label)
+function parseDateLabel(label) {
+  try {
+    var months = {
+      "January":"01","February":"02","March":"03","April":"04",
+      "May":"05","June":"06","July":"07","August":"08",
+      "September":"09","October":"10","November":"11","December":"12"
+    };
+    var parts = label.trim().split(" ");
+    if (parts.length !== 3) return null;
+    var mo = months[parts[1]];
+    if (!mo) return null;
+    var day = parts[0].length === 1 ? "0" + parts[0] : parts[0];
+    return parts[2] + "-" + mo + "-" + day;
+  } catch(e) {
+    return null;
+  }
+}
+
+// ─── TEST HELPERS ─────────────────────────────────────────────────────────────
+
+function testArchive() { archivePastDays(); }
+function testDedupe()  { removeDuplicatesFromAllSheets(); }
