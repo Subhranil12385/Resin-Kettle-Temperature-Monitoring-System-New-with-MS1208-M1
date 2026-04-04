@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resin Kettle Dashboard</title>
+    <title>Resin Kettle Dashboard · zero‑gap toggle</title>
     <!-- Chart.js + luxon (same) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.0.1/luxon.min.js"></script>
@@ -144,7 +144,7 @@
         <p>Real-time monitoring via MS1208-M1 RS-485 Modbus (8 Channels) · ESP8266 · Google Sheets</p>
     </div>
 
-    <!-- Status Card -->
+    <!-- Status Card (unchanged) -->
     <div class="status-card">
         <div class="status-header">
             <div class="status-indicators">
@@ -171,11 +171,11 @@
         </div>
     </div>
 
-    <!-- Date/Time Controls -->
+    <!-- Date/Time Controls (unchanged) -->
     <div class="controls-card">
         <h2>📅 Date and Time Selection</h2>
         <p style="color:#666; margin-bottom:15px; font-size:0.9em;">
-            ⚡ Dashboard loads <strong>last 24 hours</strong> by default. <strong>Last 3 days</strong> is pre-fetched in background for instant switching.
+            ⚡ Dashboard loads <strong>last 24 hours</strong> by default. Select a range and click <strong>Load Data</strong>.
         </p>
         <div class="date-controls">
             <div class="control-group"><label>Start Date</label><input type="date" id="startDate"></div>
@@ -188,6 +188,7 @@
             <button class="btn-secondary active" id="last24Btn"  onclick="setLast24Hours()">Last 24 Hours</button>
             <button class="btn-secondary" id="last3DaysBtn"      onclick="setLast3Days()">Last 3 Days</button>
             <button class="btn-secondary" id="thisWeekBtn"       onclick="setThisWeek()">This Week</button>
+            <button class="btn-secondary" id="todayBtn"          onclick="setToday()">Today</button>
         </div>
         <div class="auto-refresh-control">
             <label>Auto Refresh (60s):</label>
@@ -216,7 +217,7 @@
         </div>
         <div class="chart-container"><canvas id="tempChart"></canvas></div>
 
-        <!-- zero filter card with "do not join" toggle -->
+        <!-- zero filter card with new "do not join" toggle -->
         <div class="zero-filter-card">
             <label>
                 <input type="checkbox" id="hideZeroValues"> 🔘 Hide 0.0°C readings (meter off)
@@ -252,7 +253,7 @@
         </div>
     </div>
 
-    <!-- Report Section -->
+    <!-- Report Section (unchanged) -->
     <div class="report-section">
         <h2>📋 Report Generation</h2>
         <div class="report-form">
@@ -308,9 +309,18 @@
     </div>
 </div>
 
+
+
+
+
+
+
+
+
+
 <script>
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbwwq9Cr1ZxQOmbbYTjXasgc0SGIRr_QMer5gnfEpOvJx3ZHBIWATCqBUTfnlqZ0gPqy/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycby9_AJmUtAUOllo6qohRulgetPwm0fTeQyoWV51ZRBdXCMl3Ym4nNnMmpoyH1_UTdcR/exec';
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let chart = null;
@@ -323,10 +333,8 @@ let isMeasuring1 = false, isMeasuring2 = false;
 let measureStart1 = null, measureEnd1 = null, measureStart2 = null, measureEnd2 = null;
 let zeroRemovedCount = 0;        // will count total zero occurrences
 let loadingInterval = null, quoteIndex = 0, isLinkingEnabled = true;
-let cachedThreeDaysData = null;  // Cache for last 3 days data
-let currentRange = '24h';        // Track current view: '24h', '3d', 'week', 'custom'
 
-const loadingQuotes = [ 
+const loadingQuotes = [ /* unchanged */ 
     { text: "Temperature is the silent language of processes", color: "rgb(102,126,234)" },
     { text: "Precision monitoring ensures quality production", color: "rgb(239,68,68)" },
     { text: "Data is the new oil, insights are the refined fuel", color: "rgb(16,185,129)" },
@@ -352,66 +360,10 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('kettle3Check').addEventListener('change', renderChart);
     document.getElementById('linkToggle').addEventListener('change', updateLinkToggle);
     updateLinkToggle();
-    
-    // Load last 24 hours immediately (visible to user)
     loadLast24Hours();
-    
-    // Pre-load last 3 days in background (cached for instant switching)
-    setTimeout(() => {
-        prefetchLast3Days();
-    }, 2000); // Wait 2 seconds after page load to not interfere with initial render
 });
 
-// ─── Pre-fetch last 3 days in background ─────────────────────────────────────
-async function prefetchLast3Days() {
-    console.log('Pre-fetching last 3 days data in background...');
-    
-    const now = new Date();
-    const threeDaysAgo = new Date(now.getTime() - 3 * 86400000);
-    
-    const startStr = formatForAPI(threeDaysAgo);
-    const endStr = formatForAPI(now);
-    
-    try {
-        let url = SHEET_URL + '?start=' + encodeURIComponent(startStr) + '&end=' + encodeURIComponent(endStr);
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (!data.error && data.values) {
-            cachedThreeDaysData = data;
-            console.log('Last 3 days data pre-fetched successfully');
-        }
-    } catch(err) {
-        console.log('Background pre-fetch failed:', err);
-    }
-}
-
-// ─── Filter data for last 24 hours from cached 3 days ────────────────────────
-function filterLast24HoursFromCache() {
-    if (!cachedThreeDaysData || !cachedThreeDaysData.values) return null;
-    
-    const now = new Date();
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    
-    // Copy the data structure
-    const filteredData = {
-        values: [cachedThreeDaysData.values[0]], // Include header
-        statusInfo: cachedThreeDaysData.statusInfo
-    };
-    
-    // Filter rows from last 24 hours
-    for (let i = 1; i < cachedThreeDaysData.values.length; i++) {
-        const row = cachedThreeDaysData.values[i];
-        const ts = parseTimestamp(row[0].toString());
-        if (ts >= oneDayAgo) {
-            filteredData.values.push(row);
-        }
-    }
-    
-    return filteredData;
-}
-
-// ─── LOADING UI ──────────────────────────────────────────────────
+// ─── LOADING UI (unchanged) ──────────────────────────────────────────────────
 function showLoading() {
     document.getElementById('enhancedLoadingOverlay').style.display = 'flex';
     showNextQuote();
@@ -439,31 +391,21 @@ function showNextQuote() {
     },800);
 }
 
-// ─── STATUS BADGES (modified) ───────────────────────────────────────────────
+// ─── STATUS BADGES (unchanged) ───────────────────────────────────────────────
 function setMcuBadge(status) {
     const b=document.getElementById('mcuBadge'), t=document.getElementById('mcuText');
     const s=(status||'').toUpperCase().trim();
     b.className='status-badge '+(s==='ONLINE'?'online':s==='OFFLINE'?'offline':'unknown');
     t.textContent=s||'UNKNOWN';
 }
-
-function setMeterBadge(t1,t2,t3, mcuStatus) {
+function setMeterBadge(t1,t2,t3) {
     const b=document.getElementById('meterBadge'), t=document.getElementById('meterText');
-    
-    // If microcontroller is offline, meter status is UNKNOWN
-    if (mcuStatus && mcuStatus.toUpperCase().trim() === 'OFFLINE') {
-        b.className='status-badge unknown';
-        t.textContent='UNKNOWN';
-        return;
-    }
-    
-    // Otherwise determine meter status from temperature readings
     const allZero=[t1,t2,t3].map(v=>parseFloat(v)).every(v=>isNaN(v)||v===0||v===-999);
     b.className='status-badge '+(allZero?'offline':'online');
     t.textContent=allZero?'OFFLINE':'ONLINE';
 }
 
-// ─── DATE HELPERS ─────────────────────────────────────────────────
+// ─── DATE HELPERS (unchanged) ─────────────────────────────────────────────────
 function setLast24HoursInputs() {
     const now = new Date(), y = new Date(now.getTime()-86400000);
     document.getElementById('endDate').value   = now.toISOString().split('T')[0];
@@ -471,79 +413,59 @@ function setLast24HoursInputs() {
     document.getElementById('startDate').value = y.toISOString().split('T')[0];
     document.getElementById('startTime').value = y.toTimeString().substring(0,5);
 }
+function setToday() {
+    const d=new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').value=d; document.getElementById('endDate').value=d;
+    document.getElementById('startTime').value='00:00'; document.getElementById('endTime').value='23:59';
+    showArchiveBadge(false); updateActiveButton('today'); loadDataForRange();
+}
 function setLast24Hours() {
-    setLast24HoursInputs(); 
-    updateActiveButton('last24'); 
-    
-    // Use filtered cache if available
-    if (cachedThreeDaysData) {
-        console.log('Using filtered 24h data from cache');
-        const filteredData = filterLast24HoursFromCache();
-        if (filteredData && filteredData.values.length > 1) {
-            processFetchedData(filteredData);
-            currentRange = '24h';
-            return;
-        }
-    }
-    
-    // Fallback to normal fetch
-    loadDataForRange();
-    currentRange = '24h';
+    setLast24HoursInputs(); updateActiveButton('last24'); loadLast24Hours();
 }
 function setLast3Days() {
-    const now = new Date();
-    const threeDaysAgo = new Date(now.getTime() - 3 * 86400000);
-    
-    document.getElementById('endDate').value = now.toISOString().split('T')[0];
-    document.getElementById('endTime').value = '23:59';
-    document.getElementById('startDate').value = threeDaysAgo.toISOString().split('T')[0];
-    document.getElementById('startTime').value = '00:00';
-    
-    updateActiveButton('last3Days');
-    
-    // Use cached data if available, otherwise fetch normally
-    if (cachedThreeDaysData) {
-        console.log('Using pre-fetched 3 days data');
-        processFetchedData(cachedThreeDaysData);
-        currentRange = '3d';
-    } else {
-        console.log('No cached data, fetching normally');
-        loadDataForRange();
-        currentRange = '3d';
-    }
+    const now=new Date(), t=new Date(now.getTime()-3*86400000);
+    document.getElementById('endDate').value=now.toISOString().split('T')[0]; document.getElementById('endTime').value='23:59';
+    document.getElementById('startDate').value=t.toISOString().split('T')[0]; document.getElementById('startTime').value='00:00';
+    showArchiveBadge(true); updateActiveButton('last3Days'); loadDataForRange();
 }
 function setThisWeek() {
     const now=new Date(), s=new Date(now); s.setDate(now.getDate()-now.getDay());
     document.getElementById('startDate').value=s.toISOString().split('T')[0]; document.getElementById('startTime').value='00:00';
     document.getElementById('endDate').value=now.toISOString().split('T')[0]; document.getElementById('endTime').value='23:59';
-    updateActiveButton('thisWeek'); 
-    loadDataForRange();
-    currentRange = 'week';
+    showArchiveBadge(true); updateActiveButton('thisWeek'); loadDataForRange();
 }
 function updateActiveButton(id) {
-    ['last24Btn','last3DaysBtn','thisWeekBtn'].forEach(b=>document.getElementById(b).classList.remove('active'));
-    const map={last24:'last24Btn',last3Days:'last3DaysBtn',thisWeek:'thisWeekBtn'};
+    ['todayBtn','last24Btn','last3DaysBtn','thisWeekBtn'].forEach(b=>document.getElementById(b).classList.remove('active'));
+    const map={today:'todayBtn',last24:'last24Btn',last3Days:'last3DaysBtn',thisWeek:'thisWeekBtn'};
     if(map[id])document.getElementById(map[id]).classList.add('active');
 }
 function toggleAutoRefresh() {
     if(document.getElementById('autoRefresh').checked) {
-        autoRefreshInterval = setInterval(() => {
-            if (currentRange === '24h') {
-                setLast24Hours();
-            } else if (currentRange === '3d') {
-                setLast3Days();
-            } else {
-                setLast24Hours(); // Default
-            }
-        }, 60000);
+        autoRefreshInterval = setInterval(() => loadLast24Hours(), 60000);
     } else {
         if(autoRefreshInterval){clearInterval(autoRefreshInterval);autoRefreshInterval=null;}
     }
 }
 
-// ─── DATA LOADING ─────────────────────────────────────────────
+// ─── DATA LOADING ─────────────────────────────────────────────────────────────
+
+// Shows/hides the amber "Archive Mode" badge in the controls card
+function showArchiveBadge(show) {
+    let badge = document.getElementById('archiveModeBadge');
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'archiveModeBadge';
+        badge.style.cssText = 'display:none;margin-top:10px;padding:8px 16px;background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:8px;font-size:0.88em;font-weight:600;';
+        badge.innerHTML = '📦 Archive Mode — fetching data from stored daily sheets. This may take a moment longer.';
+        const controls = document.querySelector('.controls-card .button-group');
+        if (controls) controls.parentNode.insertBefore(badge, controls.nextSibling);
+    }
+    badge.style.display = show ? 'block' : 'none';
+}
+
 async function loadLast24Hours() {
     updateActiveButton('last24');
+    showArchiveBadge(false);
     await fetchData();
 }
 async function loadDataForRange() {
@@ -552,6 +474,10 @@ async function loadDataForRange() {
     if(!sd||!ed){showError('Please select a start and end date.'); return;}
     const startStr = formatForAPI(new Date(sd+'T'+st));
     const endStr   = formatForAPI(new Date(ed+'T'+et));
+    // Check if the range extends beyond today (needs archive sheets)
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isArchive = sd < todayStr; // any past date means archive sheets may be involved
+    showArchiveBadge(isArchive);
     await fetchData(startStr, endStr);
 }
 function formatForAPI(d) {
@@ -563,51 +489,48 @@ async function fetchData(startStr, endStr) {
     try {
         let url = SHEET_URL;
         if (startStr && endStr) {
-            url += '?start=' + encodeURIComponent(startStr) + '&end=' + encodeURIComponent(endStr);
+            // Custom date range — Apps Script will also search archive sheets
+            url += '?start=' + encodeURIComponent(startStr) + '&end=' + encodeURIComponent(endStr) + '&todayOnly=false';
+            document.getElementById('loadingStatus').textContent = 'Searching live + archive sheets…';
+        } else {
+            // Default last-24h: only read Sheet1 (fast path, no archive search)
+            url += '?todayOnly=true';
+            document.getElementById('loadingStatus').textContent = 'Fetching live data…';
         }
         const response = await fetch(url);
         const data = await response.json();
         if (data.error) { showError('Error: '+data.error); hideLoading(); return; }
-        
-        processFetchedData(data);
+        allData = data.values || [];
+
+        if (data.statusInfo) {
+            setMcuBadge(data.statusInfo.status);
+            setMeterBadge(data.statusInfo.temp1, data.statusInfo.temp2, data.statusInfo.temp3);
+            if (data.statusInfo.lastTimestamp) {
+                document.getElementById('lastUpdate').textContent = parseTimestamp(data.statusInfo.lastTimestamp.toString()).toLocaleString();
+            }
+            updateTempBox(1, data.statusInfo.temp1);
+            updateTempBox(2, data.statusInfo.temp2);
+            updateTempBox(3, data.statusInfo.temp3);
+        } else if (allData.length >= 2) {
+            const last = allData[allData.length-1];
+            const ts = parseTimestamp(last[0]);
+            setMcuBadge((new Date()-ts)/60000 > 1 ? 'OFFLINE' : 'ONLINE');
+            setMeterBadge(last[1],last[2],last[3]);
+            document.getElementById('lastUpdate').textContent = ts.toLocaleString();
+            updateTempBox(1,last[1]); updateTempBox(2,last[2]); updateTempBox(3,last[3]);
+        }
+        if (allData.length < 2) {
+            showError('No data found for the selected time range.');
+            hideLoading();
+            return;
+        }
+        hideError();
+        renderChart();
         hideLoading();
     } catch(err) {
         showError('Failed to load data: '+err.message);
         hideLoading();
     }
-}
-
-// ─── Process fetched data ─────────────────────────────────────
-function processFetchedData(data) {
-    allData = data.values || [];
-
-    if (data.statusInfo) {
-        setMcuBadge(data.statusInfo.status);
-        setMeterBadge(data.statusInfo.temp1, data.statusInfo.temp2, data.statusInfo.temp3, data.statusInfo.status);
-        if (data.statusInfo.lastTimestamp) {
-            document.getElementById('lastUpdate').textContent = parseTimestamp(data.statusInfo.lastTimestamp.toString()).toLocaleString();
-        }
-        updateTempBox(1, data.statusInfo.temp1);
-        updateTempBox(2, data.statusInfo.temp2);
-        updateTempBox(3, data.statusInfo.temp3);
-    } else if (allData.length >= 2) {
-        const last = allData[allData.length-1];
-        const ts = parseTimestamp(last[0]);
-        const timeDiff = (new Date() - ts) / 60000; // minutes
-        const mcuStatus = timeDiff > 1 ? 'OFFLINE' : 'ONLINE';
-        
-        setMcuBadge(mcuStatus);
-        setMeterBadge(last[1], last[2], last[3], mcuStatus);
-        
-        document.getElementById('lastUpdate').textContent = ts.toLocaleString();
-        updateTempBox(1,last[1]); updateTempBox(2,last[2]); updateTempBox(3,last[3]);
-    }
-    if (allData.length < 2) {
-        showError('No data found for the selected time range.');
-        return;
-    }
-    hideError();
-    renderChart();
 }
 function updateTempBox(n, v) {
     const temp=parseFloat(v), box=document.getElementById(`tempBox${n}`), el=document.getElementById(`temp${n}`);
@@ -625,7 +548,7 @@ function parseTimestamp(ts) {
     return new Date(ts);
 }
 
-// ─── COUNT ZEROS (per series) ───────────────────────────────────────────
+// ─── NEW: COUNT ZEROS (per series) ───────────────────────────────────────────
 function countZeroValues(rows) {
     let zeroCount = 0;
     const hideZero = document.getElementById('hideZeroValues').checked;
@@ -639,7 +562,7 @@ function countZeroValues(rows) {
     return zeroCount;
 }
 
-// ─── CHART RENDERING (per‑series nulls) ────────────────────────────
+// ─── CHART RENDERING (modified: per‑series nulls) ────────────────────────────
 function renderChart() {
     if (allData.length < 2) return;
     const rows = allData.slice(1);                         // exclude header
@@ -745,7 +668,7 @@ function updateStats(data) {
     }
 }
 
-// ─── MEASUREMENT ─────────────────────────────────────────────────
+// ─── MEASUREMENT (unchanged) ─────────────────────────────────────────────────
 function isHighlightedPoint(ts,type){return highlightedPoints[type].some(p=>p.timestamp.getTime()===ts.getTime());}
 function setActiveMeasurement(n){
     currentMeasurement=n;
@@ -775,11 +698,11 @@ function handleChartClick(event){
 }
 function showDuration(ms,id){const mins=Math.round(ms/60000),h=Math.floor(mins/60),m=mins%60;document.getElementById(id).textContent=h>0?`${h}h ${m}m`:`${m}m`;}
 
-// ─── ERROR ───────────────────────────────────────────────────────
+// ─── ERROR (unchanged) ───────────────────────────────────────────────────────
 function showError(m){const d=document.getElementById('errorMessage');d.textContent=m;d.style.display='block';}
 function hideError(){document.getElementById('errorMessage').style.display='none';}
 
-// ─── LINK TOGGLE & REPORT ────────────────────────────────────────
+// ─── LINK TOGGLE & REPORT (unchanged) ────────────────────────────────────────
 function updateLinkToggle(){
     isLinkingEnabled=document.getElementById('linkToggle').checked;
     const l=document.getElementById('linkToggle').nextElementSibling;
@@ -810,7 +733,7 @@ function toggleOthersInput(){
 }
 function setPreparedBy(n){document.getElementById('preparedBy').value=n;}
 
-// ─── DOWNLOAD ────────────────────────────────────────────────────
+// ─── DOWNLOAD (unchanged) ────────────────────────────────────────────────────
 function downloadGraph(){
     const gt=document.getElementById('graphTitle').value||'RESIN PLANT KETTLE TEMPERATURE MONITORING';
     const kn=document.getElementById('kettleNo').value||'--';
@@ -842,5 +765,17 @@ function downloadGraph(){
 }
 function wrapText(ctx,text,maxW,x,y,lh){const words=text.split(' ');let line='',lines=0;for(let i=0;i<words.length;i++){const t=line+words[i]+' ';if(ctx.measureText(t).width>maxW&&i>0){ctx.fillText(line,x,y);line=words[i]+' ';y+=lh;lines++;}else line=t;}ctx.fillText(line,x,y);return lines+1;}
 </script>
+
+
+
+
+
+
+
+
+
+
+
+
 </body>
 </html>
