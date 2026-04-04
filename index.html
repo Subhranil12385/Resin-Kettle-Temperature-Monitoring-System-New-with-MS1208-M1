@@ -4,12 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Resin Kettle Dashboard · zero‑gap toggle</title>
-    <!-- Chart.js + luxon (same) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.0.1/luxon.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-luxon/1.1.0/chartjs-adapter-luxon.min.js"></script>
     <style>
-        /* ----- all original styles, plus small addition for the new toggle ----- */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
         .container { max-width: 1400px; margin: 0 auto; }
@@ -103,7 +101,6 @@
         .legend-color { width: 15px; height: 15px; border-radius: 50%; }
         .legend-color.m1 { background-color: #8b5cf6; }
         .legend-color.m2 { background-color: #f59e0b; }
-        /* zero‑filter card + new toggle */
         .zero-filter-card { background: #f1f5f9; padding: 20px; border-radius: 10px; margin: 20px 0 10px 0; display: flex; align-items: center; gap: 25px; flex-wrap: wrap; border: 1px solid #cbd5e1; }
         .zero-filter-card label { font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 10px; font-size: 1.05em; cursor: pointer; }
         .zero-filter-card input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: #667eea; }
@@ -123,7 +120,6 @@
 </head>
 <body>
 
-<!-- loading overlay (identical) -->
 <div id="enhancedLoadingOverlay" class="loading-overlay" style="display: none;">
     <div class="loading-content">
         <div class="loading-title">🌡️ Resin Kettle Dashboard</div>
@@ -144,7 +140,6 @@
         <p>Real-time monitoring via MS1208-M1 RS-485 Modbus (8 Channels) · ESP8266 · Google Sheets</p>
     </div>
 
-    <!-- Status Card (unchanged) -->
     <div class="status-card">
         <div class="status-header">
             <div class="status-indicators">
@@ -171,7 +166,6 @@
         </div>
     </div>
 
-    <!-- Date/Time Controls (unchanged) -->
     <div class="controls-card">
         <h2>📅 Date and Time Selection</h2>
         <p style="color:#666; margin-bottom:15px; font-size:0.9em;">
@@ -199,7 +193,6 @@
 
     <div id="errorMessage" class="error" style="display: none;"></div>
 
-    <!-- Chart Card -->
     <div class="chart-card">
         <h2>📈 Temperature Trends</h2>
         <div class="kettle-selection">
@@ -217,7 +210,6 @@
         </div>
         <div class="chart-container"><canvas id="tempChart"></canvas></div>
 
-        <!-- zero filter card with new "do not join" toggle -->
         <div class="zero-filter-card">
             <label>
                 <input type="checkbox" id="hideZeroValues"> 🔘 Hide 0.0°C readings (meter off)
@@ -225,6 +217,11 @@
             <div class="gap-toggle">
                 <label>
                     <input type="checkbox" id="breakLineAtGaps"> ⛔ Do not join across hidden zeros
+                </label>
+            </div>
+            <div class="gap-toggle">
+                <label>
+                    <input type="checkbox" id="joinShortGaps" checked onchange="renderChart()"> 〰️ Join gaps &lt; 30 min (offline / no data)
                 </label>
             </div>
             <div class="filter-info">Filtered out <span id="zeroRemovedCount">0</span> zero entries</div>
@@ -253,7 +250,6 @@
         </div>
     </div>
 
-    <!-- Report Section (unchanged) -->
     <div class="report-section">
         <h2>📋 Report Generation</h2>
         <div class="report-form">
@@ -309,32 +305,23 @@
     </div>
 </div>
 
-
-
-
-
-
-
-
-
-
 <script>
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycby9_AJmUtAUOllo6qohRulgetPwm0fTeQyoWV51ZRBdXCMl3Ym4nNnMmpoyH1_UTdcR/exec';
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let chart = null;
-let allData = [];               // raw rows from fetch (including header)
-let displayData = [];           // all rows (used for point detection)
+let allData = [];
+let displayData = [];
 let autoRefreshInterval = null;
 let currentMeasurement = 1;
 let highlightedPoints = { m1: [], m2: [] };
 let isMeasuring1 = false, isMeasuring2 = false;
 let measureStart1 = null, measureEnd1 = null, measureStart2 = null, measureEnd2 = null;
-let zeroRemovedCount = 0;        // will count total zero occurrences
+let zeroRemovedCount = 0;
 let loadingInterval = null, quoteIndex = 0, isLinkingEnabled = true;
 
-const loadingQuotes = [ /* unchanged */ 
+const loadingQuotes = [
     { text: "Temperature is the silent language of processes", color: "rgb(102,126,234)" },
     { text: "Precision monitoring ensures quality production", color: "rgb(239,68,68)" },
     { text: "Data is the new oil, insights are the refined fuel", color: "rgb(16,185,129)" },
@@ -358,12 +345,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('kettle1Check').addEventListener('change', renderChart);
     document.getElementById('kettle2Check').addEventListener('change', renderChart);
     document.getElementById('kettle3Check').addEventListener('change', renderChart);
+    document.getElementById('joinShortGaps').addEventListener('change', renderChart);
     document.getElementById('linkToggle').addEventListener('change', updateLinkToggle);
     updateLinkToggle();
     loadLast24Hours();
 });
 
-// ─── LOADING UI (unchanged) ──────────────────────────────────────────────────
+// ─── LOADING UI ──────────────────────────────────────────────────────────────
 function showLoading() {
     document.getElementById('enhancedLoadingOverlay').style.display = 'flex';
     showNextQuote();
@@ -391,7 +379,7 @@ function showNextQuote() {
     },800);
 }
 
-// ─── STATUS BADGES (unchanged) ───────────────────────────────────────────────
+// ─── STATUS BADGES ───────────────────────────────────────────────────────────
 function setMcuBadge(status) {
     const b=document.getElementById('mcuBadge'), t=document.getElementById('mcuText');
     const s=(status||'').toUpperCase().trim();
@@ -405,7 +393,7 @@ function setMeterBadge(t1,t2,t3) {
     t.textContent=allZero?'OFFLINE':'ONLINE';
 }
 
-// ─── DATE HELPERS (unchanged) ─────────────────────────────────────────────────
+// ─── DATE HELPERS ─────────────────────────────────────────────────────────────
 function setLast24HoursInputs() {
     const now = new Date(), y = new Date(now.getTime()-86400000);
     document.getElementById('endDate').value   = now.toISOString().split('T')[0];
@@ -448,8 +436,6 @@ function toggleAutoRefresh() {
 }
 
 // ─── DATA LOADING ─────────────────────────────────────────────────────────────
-
-// Shows/hides the amber "Archive Mode" badge in the controls card
 function showArchiveBadge(show) {
     let badge = document.getElementById('archiveModeBadge');
     if (!badge) {
@@ -474,9 +460,8 @@ async function loadDataForRange() {
     if(!sd||!ed){showError('Please select a start and end date.'); return;}
     const startStr = formatForAPI(new Date(sd+'T'+st));
     const endStr   = formatForAPI(new Date(ed+'T'+et));
-    // Check if the range extends beyond today (needs archive sheets)
     const todayStr = new Date().toISOString().split('T')[0];
-    const isArchive = sd < todayStr; // any past date means archive sheets may be involved
+    const isArchive = sd < todayStr;
     showArchiveBadge(isArchive);
     await fetchData(startStr, endStr);
 }
@@ -489,11 +474,9 @@ async function fetchData(startStr, endStr) {
     try {
         let url = SHEET_URL;
         if (startStr && endStr) {
-            // Custom date range — Apps Script will also search archive sheets
             url += '?start=' + encodeURIComponent(startStr) + '&end=' + encodeURIComponent(endStr) + '&todayOnly=false';
             document.getElementById('loadingStatus').textContent = 'Searching live + archive sheets…';
         } else {
-            // Default last-24h: only read Sheet1 (fast path, no archive search)
             url += '?todayOnly=true';
             document.getElementById('loadingStatus').textContent = 'Fetching live data…';
         }
@@ -548,7 +531,7 @@ function parseTimestamp(ts) {
     return new Date(ts);
 }
 
-// ─── NEW: COUNT ZEROS (per series) ───────────────────────────────────────────
+// ─── COUNT ZEROS ─────────────────────────────────────────────────────────────
 function countZeroValues(rows) {
     let zeroCount = 0;
     const hideZero = document.getElementById('hideZeroValues').checked;
@@ -562,36 +545,75 @@ function countZeroValues(rows) {
     return zeroCount;
 }
 
-// ─── CHART RENDERING (modified: per‑series nulls) ────────────────────────────
+// ─── CHART RENDERING ─────────────────────────────────────────────────────────
 function renderChart() {
     if (allData.length < 2) return;
-    const rows = allData.slice(1);                         // exclude header
-    displayData = rows;                                     // keep all rows for point detection
+    const rows = allData.slice(1);
+    // Sort ascending by timestamp — archive fetches can return rows out of order
+    // at sheet boundaries (midnight), causing Chart.js to draw backwards spikes.
+    rows.sort((a, b) => parseTimestamp(a[0].toString()) - parseTimestamp(b[0].toString()));
+    displayData = rows;
 
-    // Count zeros for UI feedback
     zeroRemovedCount = countZeroValues(rows);
     document.getElementById('zeroRemovedCount').textContent = zeroRemovedCount;
 
-    // Update stats based on all rows (including zeros)
     updateStats(displayData);
 
     const k1=document.getElementById('kettle1Check').checked;
     const k2=document.getElementById('kettle2Check').checked;
     const k3=document.getElementById('kettle3Check').checked;
     const hideZero = document.getElementById('hideZeroValues').checked;
-    const breakGaps = document.getElementById('breakLineAtGaps').checked && hideZero; // only meaningful if hiding zeros
+    const breakGaps = true; // always break at gaps to prevent straight lines across midnight / data holes
 
     const timestamps=[], t1=[], t2=[], t3=[], t1h=[], t2h=[], t3h=[];
+
+    // Helper: convert value to null if hiding zeros or invalid
+    const processVal = (v) => {
+        const num = parseFloat(v);
+        if (isNaN(num) || num === -999) return null;
+        if (hideZero && num === 0) return null;
+        return num;
+    };
+
+    // ── GAP BREAKING LOGIC ─────────────────────────────────────────────────────
+    // Rules:
+    //   1. Midnight crossings ALWAYS break the line (no straight diagonal across days).
+    //   2. If "Join gaps < 30 min" is ON (default): only break if gap > 30 min.
+    //      Short offline periods (device reboots, brief dropouts) are joined smoothly.
+    //   3. If "Join gaps < 30 min" is OFF: break at any gap > 5 min (strict mode).
+    const joinShortGaps = document.getElementById('joinShortGaps').checked;
+    const LONG_GAP_MS  = 30 * 60 * 1000; // 30 minutes — always break
+    const SHORT_GAP_MS =  5 * 60 * 1000; // 5 minutes  — break when join is OFF
+    let prevTs = null;
+
+    const isMidnightCrossing = (a, b) => {
+        // True if a and b are on different calendar dates (local time)
+        return a.toLocaleDateString() !== b.toLocaleDateString();
+    };
+
     for(const row of displayData){
-        const ts=parseTimestamp(row[0].toString()); timestamps.push(ts.toISOString());
-        
-        // Helper: convert value to null if hiding zeros and value is exactly 0
-        const processVal = (v) => {
-            const num = parseFloat(v);
-            if (isNaN(num) || num === -999) return null;   // invalid readings → null
-            if (hideZero && num === 0) return null;        // hide zero when checkbox is ON
-            return num;
-        };
+        const ts = parseTimestamp(row[0].toString());
+
+        if (prevTs !== null) {
+            const gapMs = ts - prevTs;
+            const midnight = isMidnightCrossing(prevTs, ts);
+            const shouldBreak =
+                midnight ||                               // always break at midnight
+                gapMs > LONG_GAP_MS ||                   // always break if > 30 min
+                (!joinShortGaps && gapMs > SHORT_GAP_MS); // strict mode: break > 5 min
+
+            if (shouldBreak) {
+                // Insert a synthetic null 1 second after previous real point
+                // so Chart.js lifts the pen here instead of bridging the gap.
+                const gapTs = new Date(prevTs.getTime() + 1000);
+                timestamps.push(gapTs.toISOString());
+                t1.push(null); t2.push(null); t3.push(null);
+                t1h.push(null); t2h.push(null); t3h.push(null);
+            }
+        }
+        prevTs = ts;
+
+        timestamps.push(ts.toISOString());
 
         const v1 = processVal(row[1]);
         const v2 = processVal(row[2]);
@@ -616,7 +638,7 @@ function renderChart() {
         backgroundColor: color.replace('rgb(','rgba(').replace(')',',0.08)'),
         borderWidth: 2,
         tension: 0.4,
-        spanGaps: !breakGaps,          // false → break at nulls, true → connect across nulls
+        spanGaps: false,
         pointRadius: hArr.map(c=>c?6:2),
         pointBackgroundColor: hArr.map(c=>c||color),
         pointBorderColor: hArr.map(c=>c?'white':color),
@@ -654,7 +676,7 @@ function renderChart() {
     canvas.onclick = handleChartClick;
 }
 
-// ─── UPDATE STATS (unchanged – uses all rows) ─────────────────────────────────
+// ─── UPDATE STATS ─────────────────────────────────────────────────────────────
 function updateStats(data) {
     if(!data.length)return;
     const first=parseTimestamp(data[0][0].toString()),last=parseTimestamp(data[data.length-1][0].toString());
@@ -668,7 +690,7 @@ function updateStats(data) {
     }
 }
 
-// ─── MEASUREMENT (unchanged) ─────────────────────────────────────────────────
+// ─── MEASUREMENT ─────────────────────────────────────────────────────────────
 function isHighlightedPoint(ts,type){return highlightedPoints[type].some(p=>p.timestamp.getTime()===ts.getTime());}
 function setActiveMeasurement(n){
     currentMeasurement=n;
@@ -698,11 +720,11 @@ function handleChartClick(event){
 }
 function showDuration(ms,id){const mins=Math.round(ms/60000),h=Math.floor(mins/60),m=mins%60;document.getElementById(id).textContent=h>0?`${h}h ${m}m`:`${m}m`;}
 
-// ─── ERROR (unchanged) ───────────────────────────────────────────────────────
+// ─── ERROR ───────────────────────────────────────────────────────────────────
 function showError(m){const d=document.getElementById('errorMessage');d.textContent=m;d.style.display='block';}
 function hideError(){document.getElementById('errorMessage').style.display='none';}
 
-// ─── LINK TOGGLE & REPORT (unchanged) ────────────────────────────────────────
+// ─── LINK TOGGLE & REPORT ────────────────────────────────────────────────────
 function updateLinkToggle(){
     isLinkingEnabled=document.getElementById('linkToggle').checked;
     const l=document.getElementById('linkToggle').nextElementSibling;
@@ -733,7 +755,7 @@ function toggleOthersInput(){
 }
 function setPreparedBy(n){document.getElementById('preparedBy').value=n;}
 
-// ─── DOWNLOAD (unchanged) ────────────────────────────────────────────────────
+// ─── DOWNLOAD ────────────────────────────────────────────────────────────────
 function downloadGraph(){
     const gt=document.getElementById('graphTitle').value||'RESIN PLANT KETTLE TEMPERATURE MONITORING';
     const kn=document.getElementById('kettleNo').value||'--';
@@ -765,17 +787,6 @@ function downloadGraph(){
 }
 function wrapText(ctx,text,maxW,x,y,lh){const words=text.split(' ');let line='',lines=0;for(let i=0;i<words.length;i++){const t=line+words[i]+' ';if(ctx.measureText(t).width>maxW&&i>0){ctx.fillText(line,x,y);line=words[i]+' ';y+=lh;lines++;}else line=t;}ctx.fillText(line,x,y);return lines+1;}
 </script>
-
-
-
-
-
-
-
-
-
-
-
 
 </body>
 </html>
