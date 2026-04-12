@@ -22,7 +22,7 @@
         .status-badge .badge-dot { width: 11px; height: 11px; border-radius: 50%; background: white; animation: pulse 2s infinite; flex-shrink: 0; }
         .status-badge.online  { background: #10b981; }
         .status-badge.offline { background: #ef4444; }
-        .status-badge.unknown { background: #6b7280; }
+        .status-badge.unknown { background: #f59e0b; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .last-update { color: #666; font-size: 0.9em; }
         .current-temps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 20px; }
@@ -392,6 +392,12 @@ function setMeterBadge(t1,t2,t3) {
     b.className='status-badge '+(allZero?'offline':'online');
     t.textContent=allZero?'OFFLINE':'ONLINE';
 }
+// ── NEW: force meter to UNKNOWN (yellow) when MCU is offline ─────────────────
+function setMeterUnknown() {
+    const b=document.getElementById('meterBadge'), t=document.getElementById('meterText');
+    b.className='status-badge unknown';
+    t.textContent='UNKNOWN';
+}
 
 // ─── DATE HELPERS ─────────────────────────────────────────────────────────────
 function setLast24HoursInputs() {
@@ -487,7 +493,13 @@ async function fetchData(startStr, endStr) {
 
         if (data.statusInfo) {
             setMcuBadge(data.statusInfo.status);
-            setMeterBadge(data.statusInfo.temp1, data.statusInfo.temp2, data.statusInfo.temp3);
+            // ── CHANGED: if MCU is OFFLINE, meter state is UNKNOWN (yellow) ──
+            const mcuStatus = (data.statusInfo.status || '').toUpperCase().trim();
+            if (mcuStatus === 'OFFLINE') {
+                setMeterUnknown();
+            } else {
+                setMeterBadge(data.statusInfo.temp1, data.statusInfo.temp2, data.statusInfo.temp3);
+            }
             if (data.statusInfo.lastTimestamp) {
                 document.getElementById('lastUpdate').textContent = parseTimestamp(data.statusInfo.lastTimestamp.toString()).toLocaleString();
             }
@@ -497,8 +509,14 @@ async function fetchData(startStr, endStr) {
         } else if (allData.length >= 2) {
             const last = allData[allData.length-1];
             const ts = parseTimestamp(last[0]);
-            setMcuBadge((new Date()-ts)/60000 > 1 ? 'OFFLINE' : 'ONLINE');
-            setMeterBadge(last[1],last[2],last[3]);
+            const mcuOffline = (new Date()-ts)/60000 > 1;
+            setMcuBadge(mcuOffline ? 'OFFLINE' : 'ONLINE');
+            // ── CHANGED: same rule for the fallback branch ───────────────────
+            if (mcuOffline) {
+                setMeterUnknown();
+            } else {
+                setMeterBadge(last[1],last[2],last[3]);
+            }
             document.getElementById('lastUpdate').textContent = ts.toLocaleString();
             updateTempBox(1,last[1]); updateTempBox(2,last[2]); updateTempBox(3,last[3]);
         }
@@ -549,8 +567,6 @@ function countZeroValues(rows) {
 function renderChart() {
     if (allData.length < 2) return;
     const rows = allData.slice(1);
-    // Sort ascending by timestamp — archive fetches can return rows out of order
-    // at sheet boundaries (midnight), causing Chart.js to draw backwards spikes.
     rows.sort((a, b) => parseTimestamp(a[0].toString()) - parseTimestamp(b[0].toString()));
     displayData = rows;
 
@@ -563,11 +579,9 @@ function renderChart() {
     const k2=document.getElementById('kettle2Check').checked;
     const k3=document.getElementById('kettle3Check').checked;
     const hideZero = document.getElementById('hideZeroValues').checked;
-    const breakGaps = true; // always break at gaps to prevent straight lines across midnight / data holes
 
     const timestamps=[], t1=[], t2=[], t3=[], t1h=[], t2h=[], t3h=[];
 
-    // Helper: convert value to null if hiding zeros or invalid
     const processVal = (v) => {
         const num = parseFloat(v);
         if (isNaN(num) || num === -999) return null;
@@ -575,21 +589,12 @@ function renderChart() {
         return num;
     };
 
-    // ── GAP BREAKING LOGIC ─────────────────────────────────────────────────────
-    // Rules:
-    //   1. Midnight crossings ALWAYS break the line (no straight diagonal across days).
-    //   2. If "Join gaps < 30 min" is ON (default): only break if gap > 30 min.
-    //      Short offline periods (device reboots, brief dropouts) are joined smoothly.
-    //   3. If "Join gaps < 30 min" is OFF: break at any gap > 5 min (strict mode).
     const joinShortGaps = document.getElementById('joinShortGaps').checked;
-    const LONG_GAP_MS  = 30 * 60 * 1000; // 30 minutes — always break
-    const SHORT_GAP_MS =  5 * 60 * 1000; // 5 minutes  — break when join is OFF
+    const LONG_GAP_MS  = 30 * 60 * 1000;
+    const SHORT_GAP_MS =  5 * 60 * 1000;
     let prevTs = null;
 
-    const isMidnightCrossing = (a, b) => {
-        // True if a and b are on different calendar dates (local time)
-        return a.toLocaleDateString() !== b.toLocaleDateString();
-    };
+    const isMidnightCrossing = (a, b) => a.toLocaleDateString() !== b.toLocaleDateString();
 
     for(const row of displayData){
         const ts = parseTimestamp(row[0].toString());
@@ -598,13 +603,11 @@ function renderChart() {
             const gapMs = ts - prevTs;
             const midnight = isMidnightCrossing(prevTs, ts);
             const shouldBreak =
-                midnight ||                               // always break at midnight
-                gapMs > LONG_GAP_MS ||                   // always break if > 30 min
-                (!joinShortGaps && gapMs > SHORT_GAP_MS); // strict mode: break > 5 min
+                midnight ||
+                gapMs > LONG_GAP_MS ||
+                (!joinShortGaps && gapMs > SHORT_GAP_MS);
 
             if (shouldBreak) {
-                // Insert a synthetic null 1 second after previous real point
-                // so Chart.js lifts the pen here instead of bridging the gap.
                 const gapTs = new Date(prevTs.getTime() + 1000);
                 timestamps.push(gapTs.toISOString());
                 t1.push(null); t2.push(null); t3.push(null);
