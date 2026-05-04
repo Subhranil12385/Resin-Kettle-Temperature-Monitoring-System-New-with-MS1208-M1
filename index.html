@@ -835,7 +835,7 @@ function getKettleStatus(kettleIndex) {
     }
 
     // ❄️ Idle — below 40°C for last 5 minutes
-    if (latest < 40) {
+    if (latest < 45) {
         const cutoff = new Date(now.getTime() - FIVE_MIN_MS);
         // Check all readings in last 5 minutes
         let allCold = true;
