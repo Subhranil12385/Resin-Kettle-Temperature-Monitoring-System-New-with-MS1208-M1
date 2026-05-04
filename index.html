@@ -116,6 +116,29 @@
         .link-toggle label { cursor: pointer; color: #334155; font-weight: 600; user-select: none; flex-grow: 1; text-align: center; font-size: 1em; }
         .link-toggle input[type="checkbox"]:checked { accent-color: #10b981; }
         .range-hint { font-size: 0.82em; color: #667eea; margin-top: 8px; padding: 6px 12px; background: #eff2ff; border-radius: 6px; display: inline-block; }
+        .chart-nav-bar { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+        .chart-nav-bar .nav-group { display: flex; align-items: center; gap: 6px; }
+        .btn-nav { padding: 8px 18px; border: 2px solid #667eea; border-radius: 8px; background: white; color: #667eea; font-size: 1.1em; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .btn-nav:hover { background: #667eea; color: white; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(102,126,234,0.3); }
+        .btn-zoom { padding: 8px 16px; border: 2px solid #10b981; border-radius: 8px; background: white; color: #10b981; font-size: 1.05em; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+        .btn-zoom:hover { background: #10b981; color: white; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(16,185,129,0.3); }
+        .nav-label { font-size: 0.8em; color: #888; margin: 0 4px; }
+        .cache-status-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; padding:8px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; font-size:0.82em; color:#166534; }
+        .cache-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+        .cache-dot.loading { background:#f59e0b; animation:pulse 1.2s infinite; }
+        .cache-dot.done { background:#10b981; }
+        .cache-dot.idle { background:#d1d5db; }
+        .kettle-status { font-size: 1.05em; font-weight: 600; margin: 5px 0 3px; min-height: 1.4em; color: white; letter-spacing: 0.3px; }
+        .btn-nav:disabled, .btn-zoom:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+        .batch-box { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 10px; padding: 16px 20px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.15); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .batch-icon { font-size: 1.5em; }
+        .batch-label { font-size: 0.78em; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .batch-value { font-size: 2.2em; font-weight: 800; color: #f1f5f9; line-height: 1; }
+        .batch-sub { font-size: 0.72em; color: #64748b; }
+        .batch-box.has-batches .batch-value { color: #34d399; }
+        .batch-box.ongoing .batch-icon::after { content: ' 🔥'; }
+        .nav-disabled-hint { font-size: 0.78em; color: #92400e; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 5px 14px; margin-bottom: 6px; text-align: center; display: none; }
+        .nav-disabled-hint.show { display: block; }
     </style>
 </head>
 <body>
@@ -156,9 +179,14 @@
         </div>
 
         <div class="current-temps">
-            <div class="temp-box" id="tempBox1"><h3>Kettle 1 (CH1)</h3><div class="value" id="temp1">--°C</div><div class="temp-high-low"><span class="low" id="lowTemp1">--°C</span><span class="high" id="highTemp1">--°C</span></div></div>
-            <div class="temp-box" id="tempBox2"><h3>Kettle 2 (CH2)</h3><div class="value" id="temp2">--°C</div><div class="temp-high-low"><span class="low" id="lowTemp2">--°C</span><span class="high" id="highTemp2">--°C</span></div></div>
-            <div class="temp-box" id="tempBox3"><h3>Kettle 3 (CH3)</h3><div class="value" id="temp3">--°C</div><div class="temp-high-low"><span class="low" id="lowTemp3">--°C</span><span class="high" id="highTemp3">--°C</span></div></div>
+            <div class="temp-box" id="tempBox1"><h3>Kettle 1 (CH1)</h3><div class="value" id="temp1">--°C</div><div class="kettle-status" id="kettleStatus1"></div><div class="temp-high-low"><span class="low" id="lowTemp1">--°C</span><span class="high" id="highTemp1">--°C</span></div></div>
+            <div class="temp-box" id="tempBox2"><h3>Kettle 2 (CH2)</h3><div class="value" id="temp2">--°C</div><div class="kettle-status" id="kettleStatus2"></div><div class="temp-high-low"><span class="low" id="lowTemp2">--°C</span><span class="high" id="highTemp2">--°C</span></div></div>
+            <div class="temp-box" id="tempBox3"><h3>Kettle 3 (CH3)</h3><div class="value" id="temp3">--°C</div><div class="kettle-status" id="kettleStatus3"></div><div class="temp-high-low"><span class="low" id="lowTemp3">--°C</span><span class="high" id="highTemp3">--°C</span></div></div>
+        </div>
+        <div class="current-temps" style="margin-top:12px;">
+            <div class="batch-box" id="batchBox1"><div class="batch-icon">🏭</div><div class="batch-label">Kettle 1 Batches</div><div class="batch-value" id="batchCount1">--</div><div class="batch-sub">in loaded range</div></div>
+            <div class="batch-box" id="batchBox2"><div class="batch-icon">🏭</div><div class="batch-label">Kettle 2 Batches</div><div class="batch-value" id="batchCount2">--</div><div class="batch-sub">in loaded range</div></div>
+            <div class="batch-box" id="batchBox3"><div class="batch-icon">🏭</div><div class="batch-label">Kettle 3 Batches</div><div class="batch-value" id="batchCount3">--</div><div class="batch-sub">in loaded range</div></div>
         </div>
         <div class="stats-grid">
             <div class="stat-item"><div class="label">Time Range</div><div class="value" id="timeRange">--</div></div>
@@ -184,6 +212,11 @@
             <button class="btn-secondary" id="thisWeekBtn"       onclick="setThisWeek()">This Week</button>
             <button class="btn-secondary" id="todayBtn"          onclick="setToday()">Today</button>
         </div>
+        <div id="cacheStatusBar" class="cache-status-bar" style="display:none;">
+            <span class="cache-dot idle" id="cache3dDot"></span><span id="cache3dText">3-day cache: idle</span>
+            &nbsp;|&nbsp;
+            <span class="cache-dot idle" id="cache7dDot"></span><span id="cache7dText">7-day cache: idle</span>
+        </div>
         <div class="auto-refresh-control">
             <label>Auto Refresh (60s):</label>
             <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()">
@@ -208,7 +241,22 @@
             <div class="legend-item"><div class="legend-color m1"></div><span>Measurement 1</span></div>
             <div class="legend-item"><div class="legend-color m2"></div><span>Measurement 2</span></div>
         </div>
-        <div class="chart-container"><canvas id="tempChart"></canvas></div>
+        <div id="navDisabledHint" class="nav-disabled-hint">⏳ Scroll &amp; zoom unlock once the 3-day cache is ready</div>
+        <div class="chart-nav-bar">
+            <div class="nav-group">
+                <button class="btn-nav" id="navLeft"  title="Scroll left (hold to continue)">◀ 10 min</button>
+                <button class="btn-nav" id="navRight" title="Scroll right (hold to continue)">10 min ▶</button>
+            </div>
+            <span class="nav-label">|</span>
+            <div class="nav-group">
+                <button class="btn-zoom" id="navZoomIn"  title="Zoom in (hold to continue)">🔍+ Zoom In</button>
+                <button class="btn-zoom" id="navZoomOut" title="Zoom out (hold to continue)">🔍− Zoom Out</button>
+            </div>
+        </div>
+        <div class="chart-container" style="position:relative;">
+            <canvas id="tempChart"></canvas>
+            <svg id="measureOverlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
 
         <div class="zero-filter-card">
             <label>
@@ -258,7 +306,8 @@
                 <input type="text" id="graphTitle" placeholder="e.g., CPIL - 03 / PF">
                 <div class="link-toggle"><input type="checkbox" id="linkToggle" checked><label for="linkToggle">Auto-link Title ↔ Resin ↔ Kettle</label></div>
                 <div class="quick-buttons-group">
-                    <button type="button" class="quick-btn" onclick="handleGraphTitleClick('CPIL - 03 / PF')">CPIL - 03 / PF</button>
+                    <button type="button" class="quick-btn" onclick="handleGraphTitleClick('CPIL - 03 / PF')">CPIL - 03 / PF (1)</button>
+                    <button type="button" class="quick-btn" onclick="handleGraphTitleClickPF2()">CPIL - 03 / PF (2)</button>
                     <button type="button" class="quick-btn" onclick="handleGraphTitleClick('CPIL - 03 / UF')">CPIL - 03 / UF</button>
                     <button type="button" class="quick-btn" onclick="handleGraphTitleClick('CPIL - 03 / MF')">CPIL - 03 / MF</button>
                     <button type="button" class="quick-btn" onclick="handleGraphTitleClick('CPIL - 03 / UMF')">CPIL - 03 / UMF</button>
@@ -321,6 +370,189 @@ let measureStart1 = null, measureEnd1 = null, measureStart2 = null, measureEnd2 
 let zeroRemovedCount = 0;
 let loadingInterval = null, quoteIndex = 0, isLinkingEnabled = true;
 
+// ─── BACKGROUND CACHE ────────────────────────────────────────────────────────
+// cachedData holds ALL rows fetched so far, sorted by time, deduplicated.
+// cachedFrom / cachedTo track the continuous span covered.
+let cachedData    = [];    // flat array of data rows (same format as allData.slice(1))
+let cachedHeader  = null;  // header row saved from first fetch
+let cachedFrom    = null;  // Date – earliest row in cache
+let cachedTo      = null;  // Date – latest row in cache
+let bgFetchQueue  = [];    // pending bg-fetch jobs [{startStr,endStr,which,label}]
+let bgFetchRunning = false;
+let bgPrefetchStarted = false;  // ensure prefetch only kicks off once
+
+// Live-edge: rows within this window of "now" are always considered stale so
+// scroll/zoom near the present will still merge fresh live data silently.
+const LIVE_EDGE_MS = 3 * 60 * 1000; // 3 minutes
+
+let navButtonsEnabled = false;
+
+function setNavButtonsEnabled(enabled) {
+    navButtonsEnabled = enabled;
+    const ids = ['navLeft','navRight','navZoomIn','navZoomOut'];
+    ids.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = !enabled;
+    });
+    const hint = document.getElementById('navDisabledHint');
+    if (hint) hint.classList.toggle('show', !enabled);
+}
+
+function setCacheStatus(which, state, msg) {
+    const bar  = document.getElementById('cacheStatusBar');
+    const dot  = document.getElementById(`cache${which}Dot`);
+    const text = document.getElementById(`cache${which}Text`);
+    if (!bar || !dot || !text) return;
+    bar.style.display = 'flex';
+    dot.className = `cache-dot ${state}`;
+    text.textContent = msg;
+    // Enable nav buttons once 3-day cache is done
+    if (which === '3d' && state === 'done') {
+        setNavButtonsEnabled(true);
+    }
+}
+
+// Merge new rows into the master cache, dedup by timestamp string, keep sorted.
+function mergeToCacheRows(newRows) {
+    if (!newRows || !newRows.length) return;
+    const existing = new Set(cachedData.map(r => r[0].toString()));
+    let added = 0;
+    for (const r of newRows) {
+        if (!existing.has(r[0].toString())) {
+            cachedData.push(r);
+            existing.add(r[0].toString());
+            added++;
+        }
+    }
+    if (added === 0) return;
+    cachedData.sort((a, b) => parseTimestamp(a[0].toString()) - parseTimestamp(b[0].toString()));
+    cachedFrom = parseTimestamp(cachedData[0][0].toString());
+    cachedTo   = parseTimestamp(cachedData[cachedData.length - 1][0].toString());
+}
+
+// Returns rows from cache within [startDT, endDT].
+function sliceCache(startDT, endDT) {
+    return cachedData.filter(r => {
+        const t = parseTimestamp(r[0].toString());
+        return t >= startDT && t <= endDT;
+    });
+}
+
+// True if cache fully covers [startDT, endDT].
+// The end boundary gets a live-edge exemption: if endDT is within LIVE_EDGE_MS
+// of now, we check only that cachedTo is within that window (data will be
+// supplemented silently by silentEdgeRefresh).
+function cacheCovers(startDT, endDT) {
+    if (!cachedFrom || !cachedTo) return false;
+    const now    = new Date();
+    const margin = 2 * 60 * 1000;
+    const startOk = cachedFrom <= new Date(startDT.getTime() + margin);
+    const liveEnd = (now - endDT) < LIVE_EDGE_MS;
+    const endOk   = liveEnd
+        ? cachedTo >= new Date(now.getTime() - LIVE_EDGE_MS)
+        : cachedTo >= new Date(endDT.getTime() - margin);
+    return startOk && endOk;
+}
+
+// Run the bg-fetch queue one job at a time.
+async function runBgQueue() {
+    if (bgFetchRunning || bgFetchQueue.length === 0) return;
+    bgFetchRunning = true;
+    while (bgFetchQueue.length > 0) {
+        const job = bgFetchQueue.shift();
+        try {
+            setCacheStatus(job.which, 'loading', `${job.label} cache: loading…`);
+            const url = SHEET_URL + '?start=' + encodeURIComponent(job.startStr) +
+                        '&end='   + encodeURIComponent(job.endStr)   + '&todayOnly=false';
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (!data.error && data.values && data.values.length > 1) {
+                if (!cachedHeader) cachedHeader = data.values[0];
+                mergeToCacheRows(data.values.slice(1));
+                setCacheStatus(job.which, 'done', `${job.label} cache: ready ✓`);
+            } else {
+                setCacheStatus(job.which, 'idle', `${job.label} cache: no data`);
+            }
+        } catch(e) {
+            setCacheStatus(job.which, 'idle', `${job.label} cache: error`);
+        }
+        if (bgFetchQueue.length > 0) await new Promise(r => setTimeout(r, 800));
+    }
+    bgFetchRunning = false;
+}
+
+function enqueueBgFetch(startStr, endStr, which, label) {
+    // Skip if already queued for this label
+    if (bgFetchQueue.some(j => j.which === which)) return;
+    bgFetchQueue.push({ startStr, endStr, which, label });
+    runBgQueue();
+}
+
+// Kick off background pre-fetching: 3d first, then 7d (runs only once per session).
+function startBgPrefetch() {
+    if (bgPrefetchStarted) return;
+    bgPrefetchStarted = true;
+    const now = new Date();
+    const e   = formatForAPI(now);
+    const t3  = new Date(now.getTime() - 3 * 86400000);
+    const t7  = new Date(now.getTime() - 7 * 86400000);
+    enqueueBgFetch(formatForAPI(t3), e, '3d', '3-day');
+    // 7d job queued immediately; runBgQueue processes sequentially
+    enqueueBgFetch(formatForAPI(t7), e, '7d', '7-day');
+}
+
+// Silent live-edge refresh: fetch only the last ~10 min, merge, re-render.
+// Called by auto-refresh and optionally after cache-hit near "now".
+async function silentLiveRefresh() {
+    try {
+        const now   = new Date();
+        const from  = new Date(now.getTime() - 10 * 60 * 1000);
+        const url   = SHEET_URL + '?start=' + encodeURIComponent(formatForAPI(from)) +
+                      '&end='   + encodeURIComponent(formatForAPI(now)) + '&todayOnly=false';
+        const resp  = await fetch(url);
+        const data  = await resp.json();
+        if (!data.error && data.values && data.values.length > 1) {
+            if (!cachedHeader) cachedHeader = data.values[0];
+            mergeToCacheRows(data.values.slice(1));
+            // Update status badges silently
+            if (data.statusInfo) {
+                setMcuBadge(data.statusInfo.status);
+                const s = (data.statusInfo.status||'').toUpperCase().trim();
+                if (s === 'OFFLINE') setMeterUnknown();
+                else setMeterBadge(data.statusInfo.temp1, data.statusInfo.temp2, data.statusInfo.temp3);
+                if (data.statusInfo.lastTimestamp)
+                    document.getElementById('lastUpdate').textContent =
+                        parseTimestamp(data.statusInfo.lastTimestamp.toString()).toLocaleString();
+                updateTempBox(1,data.statusInfo.temp1); updateTempBox(2,data.statusInfo.temp2); updateTempBox(3,data.statusInfo.temp3);
+            }
+            // Re-render chart with merged data if current view overlaps live edge
+            const sd = document.getElementById('startDate').value;
+            const st = document.getElementById('startTime').value;
+            const ed = document.getElementById('endDate').value;
+            const et = document.getElementById('endTime').value;
+            if (sd && ed) {
+                const endDT = new Date(ed + 'T' + et);
+                if ((now - endDT) < LIVE_EDGE_MS + 5 * 60 * 1000) {
+                    // Auto-scroll: advance the window to follow the live edge
+                    const startDT = new Date(sd + 'T' + st);
+                    const span = endDT - startDT;
+                    const newEnd   = now;
+                    const newStart = new Date(newEnd.getTime() - span);
+                    document.getElementById('startDate').value = toDateStr(newStart);
+                    document.getElementById('startTime').value = toTimeStr(newStart);
+                    document.getElementById('endDate').value   = toDateStr(newEnd);
+                    document.getElementById('endTime').value   = toTimeStr(newEnd);
+                    const rows = sliceCache(newStart, newEnd);
+                    if (rows.length >= 2) {
+                        allData = [cachedHeader || rows[0], ...rows];
+                        renderChart();
+                    }
+                }
+            }
+        }
+    } catch(e) { /* silent — don't bother user */ }
+}
+
 const loadingQuotes = [
     { text: "Temperature is the silent language of processes", color: "rgb(102,126,234)" },
     { text: "Precision monitoring ensures quality production", color: "rgb(239,68,68)" },
@@ -341,6 +573,7 @@ const loadingQuotes = [
 
 // ─── DOM Ready ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
+    setNavButtonsEnabled(false);  // disabled until 3-day cache is ready
     setLast24HoursInputs();
     document.getElementById('kettle1Check').addEventListener('change', renderChart);
     document.getElementById('kettle2Check').addEventListener('change', renderChart);
@@ -408,24 +641,26 @@ function setLast24HoursInputs() {
     document.getElementById('startTime').value = y.toTimeString().substring(0,5);
 }
 function setToday() {
-    const d=new Date().toISOString().split('T')[0];
-    document.getElementById('startDate').value=d; document.getElementById('endDate').value=d;
-    document.getElementById('startTime').value='00:00'; document.getElementById('endTime').value='23:59';
+    const now = new Date();
+    const d = now.toISOString().split('T')[0];
+    document.getElementById('startDate').value = d; document.getElementById('endDate').value = d;
+    document.getElementById('startTime').value = '00:00';
+    document.getElementById('endTime').value   = toTimeStr(now);
     showArchiveBadge(false); updateActiveButton('today'); loadDataForRange();
 }
 function setLast24Hours() {
-    setLast24HoursInputs(); updateActiveButton('last24'); loadLast24Hours();
+    setLast24HoursInputs(); updateActiveButton('last24'); loadDataForRange();
 }
 function setLast3Days() {
     const now=new Date(), t=new Date(now.getTime()-3*86400000);
-    document.getElementById('endDate').value=now.toISOString().split('T')[0]; document.getElementById('endTime').value='23:59';
-    document.getElementById('startDate').value=t.toISOString().split('T')[0]; document.getElementById('startTime').value='00:00';
+    document.getElementById('endDate').value=now.toISOString().split('T')[0]; document.getElementById('endTime').value=toTimeStr(now);
+    document.getElementById('startDate').value=t.toISOString().split('T')[0]; document.getElementById('startTime').value=toTimeStr(t);
     showArchiveBadge(true); updateActiveButton('last3Days'); loadDataForRange();
 }
 function setThisWeek() {
-    const now=new Date(), s=new Date(now); s.setDate(now.getDate()-now.getDay());
+    const now=new Date(), s=new Date(now); s.setDate(now.getDate()-now.getDay()); s.setHours(0,0,0,0);
     document.getElementById('startDate').value=s.toISOString().split('T')[0]; document.getElementById('startTime').value='00:00';
-    document.getElementById('endDate').value=now.toISOString().split('T')[0]; document.getElementById('endTime').value='23:59';
+    document.getElementById('endDate').value=now.toISOString().split('T')[0]; document.getElementById('endTime').value=toTimeStr(now);
     showArchiveBadge(true); updateActiveButton('thisWeek'); loadDataForRange();
 }
 function updateActiveButton(id) {
@@ -435,7 +670,7 @@ function updateActiveButton(id) {
 }
 function toggleAutoRefresh() {
     if(document.getElementById('autoRefresh').checked) {
-        autoRefreshInterval = setInterval(() => loadLast24Hours(), 60000);
+        autoRefreshInterval = setInterval(() => silentLiveRefresh(), 60000);
     } else {
         if(autoRefreshInterval){clearInterval(autoRefreshInterval);autoRefreshInterval=null;}
     }
@@ -456,25 +691,44 @@ function showArchiveBadge(show) {
 }
 
 async function loadLast24Hours() {
+    setLast24HoursInputs();
     updateActiveButton('last24');
     showArchiveBadge(false);
-    await fetchData();
+    await loadDataForRange();
 }
+
 async function loadDataForRange() {
     const sd=document.getElementById('startDate').value, st=document.getElementById('startTime').value;
     const ed=document.getElementById('endDate').value,   et=document.getElementById('endTime').value;
     if(!sd||!ed){showError('Please select a start and end date.'); return;}
-    const startStr = formatForAPI(new Date(sd+'T'+st));
-    const endStr   = formatForAPI(new Date(ed+'T'+et));
+    const startDT = new Date(sd+'T'+st);
+    const endDT   = new Date(ed+'T'+et);
+    const startStr = formatForAPI(startDT);
+    const endStr   = formatForAPI(endDT);
     const todayStr = new Date().toISOString().split('T')[0];
     const isArchive = sd < todayStr;
     showArchiveBadge(isArchive);
+
+    // ── Cache-hit path: no loading overlay ──────────────────────────────────
+    if (cacheCovers(startDT, endDT)) {
+        const rows = sliceCache(startDT, endDT);
+        if (rows.length >= 2) {
+            allData = cachedHeader ? [cachedHeader, ...rows] : [rows[0], ...rows];
+            hideError();
+            renderChart();
+            return; // instant, no spinner
+        }
+    }
+
+    // ── Cache miss: real fetch ───────────────────────────────────────────────
     await fetchData(startStr, endStr);
 }
+
 function formatForAPI(d) {
     const pad=n=>String(n).padStart(2,'0');
     return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
+
 async function fetchData(startStr, endStr) {
     showLoading();
     try {
@@ -491,9 +745,14 @@ async function fetchData(startStr, endStr) {
         if (data.error) { showError('Error: '+data.error); hideLoading(); return; }
         allData = data.values || [];
 
+        // Seed the cache with whatever we just fetched
+        if (allData.length > 1) {
+            if (!cachedHeader) cachedHeader = allData[0];
+            mergeToCacheRows(allData.slice(1));
+        }
+
         if (data.statusInfo) {
             setMcuBadge(data.statusInfo.status);
-            // ── CHANGED: if MCU is OFFLINE, meter state is UNKNOWN (yellow) ──
             const mcuStatus = (data.statusInfo.status || '').toUpperCase().trim();
             if (mcuStatus === 'OFFLINE') {
                 setMeterUnknown();
@@ -511,12 +770,7 @@ async function fetchData(startStr, endStr) {
             const ts = parseTimestamp(last[0]);
             const mcuOffline = (new Date()-ts)/60000 > 1;
             setMcuBadge(mcuOffline ? 'OFFLINE' : 'ONLINE');
-            // ── CHANGED: same rule for the fallback branch ───────────────────
-            if (mcuOffline) {
-                setMeterUnknown();
-            } else {
-                setMeterBadge(last[1],last[2],last[3]);
-            }
+            if (mcuOffline) { setMeterUnknown(); } else { setMeterBadge(last[1],last[2],last[3]); }
             document.getElementById('lastUpdate').textContent = ts.toLocaleString();
             updateTempBox(1,last[1]); updateTempBox(2,last[2]); updateTempBox(3,last[3]);
         }
@@ -526,13 +780,86 @@ async function fetchData(startStr, endStr) {
             return;
         }
         hideError();
+
+        // If this was a todayOnly fetch (no range args), sync the date inputs to the
+        // actual data span so scroll/zoom buttons work correctly from the start
+        if (!startStr && !endStr && allData.length >= 2) {
+            const rows = allData.slice(1);
+            const firstTs = parseTimestamp(rows[0][0].toString());
+            const lastTs  = parseTimestamp(rows[rows.length-1][0].toString());
+            document.getElementById('startDate').value = toDateStr(firstTs);
+            document.getElementById('startTime').value = toTimeStr(firstTs);
+            document.getElementById('endDate').value   = toDateStr(lastTs);
+            document.getElementById('endTime').value   = toTimeStr(lastTs);
+        }
+
         renderChart();
         hideLoading();
+
+        // ── After first successful fetch, kick off background prefetch once ───
+        setTimeout(() => startBgPrefetch(), 2500);
     } catch(err) {
         showError('Failed to load data: '+err.message);
         hideLoading();
     }
 }
+// ─── KETTLE STATUS LOGIC ─────────────────────────────────────────────────────
+function getKettleStatus(kettleIndex) {
+    // kettleIndex: 1-based (1,2,3) → column index in row is kettleIndex
+    if (!displayData || displayData.length < 2) return '';
+    const now = new Date();
+    const FIVE_MIN_MS = 5 * 60 * 1000;
+
+    // Gather last 6 readings (non-null, non-999)
+    const recent = [];
+    for (let i = displayData.length - 1; i >= 0 && recent.length < 6; i--) {
+        const v = parseFloat(displayData[i][kettleIndex]);
+        if (!isNaN(v) && v !== -999) recent.unshift(v);
+    }
+    if (recent.length === 0) return '';
+    const latest = recent[recent.length - 1];
+
+    // ⚠️ Too High — ≥ 95°C (highest priority)
+    if (latest >= 95) return '⚠️ Too High';
+
+    // 🔥 Cooking — ≥ 80°C
+    if (latest >= 80) return '🔥 Cooking';
+
+    // Trend: compare first vs last of last 6 readings
+    if (recent.length >= 2) {
+        const trend = recent[recent.length - 1] - recent[0];
+        // 🔺 Heating — rising > 1°C
+        if (trend > 1) return '🔺 Heating';
+        // 🔻 Cooling — falling > 1°C
+        if (trend < -1) return '🔻 Cooling';
+    }
+
+    // ❄️ Idle — below 40°C for last 5 minutes
+    if (latest < 40) {
+        const cutoff = new Date(now.getTime() - FIVE_MIN_MS);
+        // Check all readings in last 5 minutes
+        let allCold = true;
+        let foundRecent = false;
+        for (let i = displayData.length - 1; i >= 0; i--) {
+            const ts = parseTimestamp(displayData[i][0].toString());
+            if (ts < cutoff) break;
+            foundRecent = true;
+            const v = parseFloat(displayData[i][kettleIndex]);
+            if (!isNaN(v) && v !== -999 && v >= 40) { allCold = false; break; }
+        }
+        if (foundRecent && allCold) return '❄️ Idle';
+    }
+
+    return '';
+}
+
+function updateKettleStatuses() {
+    for (let k = 1; k <= 3; k++) {
+        const el = document.getElementById(`kettleStatus${k}`);
+        if (el) el.textContent = getKettleStatus(k);
+    }
+}
+
 function updateTempBox(n, v) {
     const temp=parseFloat(v), box=document.getElementById(`tempBox${n}`), el=document.getElementById(`temp${n}`);
     if(isNaN(temp)||temp===-999){el.textContent='--°C'; box.style.background='linear-gradient(135deg,#667eea,#764ba2)'; return;}
@@ -632,8 +959,6 @@ function renderChart() {
     }
 
     const canvas=document.getElementById('tempChart');
-    if(chart){chart.destroy();chart=null;}
-    const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
 
     const mkDs=(label,data,hArr,color)=>({
         label, data,
@@ -649,15 +974,39 @@ function renderChart() {
         pointHoverRadius: 8
     });
 
-    const datasets=[];
-    if(k1) datasets.push(mkDs('Kettle 1 (CH1)', t1, t1h, 'rgb(239,68,68)'));
-    if(k2) datasets.push(mkDs('Kettle 2 (CH2)', t2, t2h, 'rgb(59,130,246)'));
-    if(k3) datasets.push(mkDs('Kettle 3 (CH3)', t3, t3h, 'rgb(16,185,129)'));
+    const dsConfigs = [];
+    if(k1) dsConfigs.push({ ds: mkDs('Kettle 1 (CH1)', t1, t1h, 'rgb(239,68,68)'),   data: t1, hArr: t1h });
+    if(k2) dsConfigs.push({ ds: mkDs('Kettle 2 (CH2)', t2, t2h, 'rgb(59,130,246)'),  data: t2, hArr: t2h });
+    if(k3) dsConfigs.push({ ds: mkDs('Kettle 3 (CH3)', t3, t3h, 'rgb(16,185,129)'),  data: t3, hArr: t3h });
+    const datasets = dsConfigs.map(d => d.ds);
+
+    // Fast path: patch existing chart in-place (no destroy/rebuild) when dataset
+    // count matches — used during hold-scroll so every tick is instant.
+    if (chart && chart.data.datasets.length === datasets.length) {
+        chart.data.labels = timestamps;
+        datasets.forEach((ds, i) => {
+            chart.data.datasets[i].data             = ds.data;
+            chart.data.datasets[i].pointRadius      = ds.pointRadius;
+            chart.data.datasets[i].pointBackgroundColor = ds.pointBackgroundColor;
+            chart.data.datasets[i].pointBorderColor = ds.pointBorderColor;
+            chart.data.datasets[i].pointBorderWidth = ds.pointBorderWidth;
+        });
+        chart.update('none');
+        canvas.onclick = handleChartClick;
+        updateKettleStatuses();
+        requestAnimationFrame(() => drawMeasurementOverlay());
+        return;
+    }
+
+    // Full rebuild (first load, or kettle selection changed)
+    if(chart){chart.destroy();chart=null;}
+    const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
 
     chart = new Chart(ctx, {
         type:'line',
         data: { labels: timestamps, datasets },
         options: {
+            animation: false,
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode:'index', intersect:false },
@@ -677,6 +1026,64 @@ function renderChart() {
         }
     });
     canvas.onclick = handleChartClick;
+    updateKettleStatuses();
+    requestAnimationFrame(() => drawMeasurementOverlay());
+}
+
+// ─── BATCH COUNTING ──────────────────────────────────────────────────────────
+// Counts batches per kettle column (1-based index) in a rows array.
+// Rules: must cross >80°C, stay above for ≥10 min continuously, then drop back.
+// An ongoing hot period at end of data counts if it already lasted ≥10 min.
+function countBatches(rows, col) {
+    const THRESHOLD = 80;
+    const MIN_MS    = 10 * 60 * 1000; // 10 minutes
+
+    let batches       = 0;
+    let inBatch       = false;
+    let batchStartTs  = null;
+    let qualified     = false; // has stayed hot ≥10 min
+
+    for (const row of rows) {
+        const ts  = parseTimestamp(row[0].toString());
+        const val = parseFloat(row[col]);
+        if (isNaN(val) || val === -999) continue;
+
+        if (!inBatch) {
+            if (val > THRESHOLD) {
+                inBatch      = true;
+                batchStartTs = ts;
+                qualified    = false;
+            }
+        } else {
+            if (val > THRESHOLD) {
+                // Still hot — check if we've crossed the min duration
+                if (!qualified && (ts - batchStartTs) >= MIN_MS) {
+                    qualified = true;
+                }
+            } else {
+                // Dropped below threshold — end of hot cycle
+                if (qualified) batches++;
+                inBatch   = false;
+                batchStartTs = null;
+                qualified = false;
+            }
+        }
+    }
+    // End-of-data: ongoing batch that already lasted ≥10 min
+    if (inBatch && qualified) batches++;
+
+    return batches;
+}
+
+function updateBatchCounts(rows) {
+    for (let k = 1; k <= 3; k++) {
+        const count = countBatches(rows, k);
+        const el    = document.getElementById(`batchCount${k}`);
+        const box   = document.getElementById(`batchBox${k}`);
+        if (!el || !box) continue;
+        el.textContent = count;
+        box.classList.toggle('has-batches', count > 0);
+    }
 }
 
 // ─── UPDATE STATS ─────────────────────────────────────────────────────────────
@@ -691,6 +1098,7 @@ function updateStats(data) {
         document.getElementById(`highTemp${k}`).textContent=(high!==-Infinity?high.toFixed(2):'--')+'°C';
         document.getElementById(`lowTemp${k}`).textContent=(low!==Infinity?low.toFixed(2):'--')+'°C';
     }
+    updateBatchCounts(data);
 }
 
 // ─── MEASUREMENT ─────────────────────────────────────────────────────────────
@@ -703,7 +1111,10 @@ function setActiveMeasurement(n){
 function handleChartClick(event){
     if(!chart)return;
     const canvas=document.getElementById('tempChart'),rect=canvas.getBoundingClientRect();
-    const valueX=chart.scales.x.getValueForPixel(event.clientX-rect.left); if(!valueX)return;
+    // Use devicePixelRatio-aware pixel position
+    const clickX = event.clientX - rect.left;
+    const valueX=chart.scales.x.getValueForPixel(clickX);
+    if(!valueX)return;
     let closest=null,minDiff=Infinity;
     for(const row of displayData){const ts=parseTimestamp(row[0].toString()),diff=Math.abs(ts-valueX);if(diff<minDiff){minDiff=diff;closest=ts;}}
     if(!closest)return;
@@ -720,8 +1131,115 @@ function handleChartClick(event){
         highlightedPoints[`m${m}`].push({timestamp:closest});
     }
     renderChart();
+    drawMeasurementOverlay();
 }
 function showDuration(ms,id){const mins=Math.round(ms/60000),h=Math.floor(mins/60),m=mins%60;document.getElementById(id).textContent=h>0?`${h}h ${m}m`:`${m}m`;}
+
+// ─── MEASUREMENT OVERLAY ─────────────────────────────────────────────────────
+// Chart.js 3.x: chartArea, getPixelForValue() all return CSS pixels (logical px).
+// The SVG overlay is sized via CSS width/height:100% so its coordinate space
+// matches CSS pixels 1:1 with the canvas layout. No DPR scaling needed here.
+function drawMeasurementOverlay() {
+    const svg = document.getElementById('measureOverlay');
+    if (!svg || !chart) { if(svg) svg.innerHTML=''; return; }
+
+    const ca = chart.chartArea; // CSS px relative to canvas top-left
+
+    // getPixelForValue returns CSS px directly in Chart.js 3.x
+    function toPx(tsMs) {
+        return chart.scales.x.getPixelForValue(tsMs);
+    }
+    const areaBottom = ca.bottom;
+    const areaTop    = ca.top;
+
+    // M1 = purple (#8b5cf6), M2 = orange/amber (#f59e0b) — matches legend
+    const configs = [
+        { start: measureStart1, end: measureEnd1, color: '#8b5cf6', mId: 'p' },
+        { start: measureStart2, end: measureEnd2, color: '#f59e0b', mId: 'y' }
+    ];
+
+    let html = `<defs>
+        <marker id="arr-p" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+            <path d="M8,0 L0,4 L8,8" fill="none" stroke="#8b5cf6" stroke-width="1.5"/>
+        </marker>
+        <marker id="arr-p-r" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse">
+            <path d="M8,0 L0,4 L8,8" fill="none" stroke="#8b5cf6" stroke-width="1.5"/>
+        </marker>
+        <marker id="arr-y" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+            <path d="M8,0 L0,4 L8,8" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+        </marker>
+        <marker id="arr-y-r" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse">
+            <path d="M8,0 L0,4 L8,8" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+        </marker>
+    </defs>`;
+
+    configs.forEach((cfg) => {
+        if (!cfg.start) return;
+        const color = cfg.color;
+        const mId = cfg.mId;
+        const x1 = toPx(cfg.start.getTime());
+
+        // Drop line for start point
+        html += `<line x1="${x1}" y1="${areaTop}" x2="${x1}" y2="${areaBottom}"
+            stroke="${color}" stroke-width="2" stroke-dasharray="5,4" opacity="0.85"/>`;
+        // Dot at bottom
+        html += `<circle cx="${x1}" cy="${areaBottom}" r="4" fill="${color}" opacity="0.9"/>`;
+
+        if (!cfg.end) return;
+        const x2 = toPx(cfg.end.getTime());
+
+        // Drop line for end point
+        html += `<line x1="${x2}" y1="${areaTop}" x2="${x2}" y2="${areaBottom}"
+            stroke="${color}" stroke-width="2" stroke-dasharray="5,4" opacity="0.85"/>`;
+        html += `<circle cx="${x2}" cy="${areaBottom}" r="4" fill="${color}" opacity="0.9"/>`;
+
+        // Double-sided arrow — sits just below the chart area
+        const arrowY = areaBottom + 22;
+        const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+
+        // Duration label
+        const ms = Math.abs(cfg.end - cfg.start);
+        const mins = Math.round(ms / 60000);
+        const h = Math.floor(mins / 60), m = mins % 60;
+        const label = h > 0 ? `${h}h ${m}m` : `${m}m`;
+        const midX = (x1 + x2) / 2;
+
+        // Horizontal connecting line with arrowheads pointing OUTWARD
+        const ah = 7, aw = 4; // arrowhead size
+        html += `<line x1="${minX + ah}" y1="${arrowY}" x2="${maxX - ah}" y2="${arrowY}"
+            stroke="${color}" stroke-width="2" opacity="0.95"/>`;
+        // Left arrowhead pointing LEFT (outward)
+        html += `<polyline points="${minX+ah},${arrowY-aw} ${minX},${arrowY} ${minX+ah},${arrowY+aw}"
+            fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="0.95"/>`;
+        // Right arrowhead pointing RIGHT (outward)
+        html += `<polyline points="${maxX-ah},${arrowY-aw} ${maxX},${arrowY} ${maxX-ah},${arrowY+aw}"
+            fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="0.95"/>`;
+
+        // Label background pill
+        const lblW = label.length * 9 + 16;
+        html += `<rect x="${midX - lblW/2}" y="${arrowY - 14}" width="${lblW}" height="20"
+            rx="4" fill="white" stroke="${color}" stroke-width="1.5" opacity="0.95"/>`;
+        html += `<text x="${midX}" y="${arrowY + 1}" text-anchor="middle" dominant-baseline="middle"
+            font-size="12" font-weight="700" font-family="Segoe UI,Arial,sans-serif"
+            fill="${color}">${label}</text>`;
+    });
+
+    svg.innerHTML = html;
+}
+
+// Re-draw overlay after chart updates (called from renderChart patch path too)
+const _origRenderChart = renderChart;
+function renderChartWithOverlay() {
+    _origRenderChart.apply(this, arguments);
+    // Small defer so Chart.js finishes layout before we measure chartArea
+    requestAnimationFrame(() => drawMeasurementOverlay());
+}
+
+// Patch canvas.onclick to also redraw overlay after clicks
+// (already handled inside handleChartClick, but guard for resize)
+window.addEventListener('resize', () => {
+    requestAnimationFrame(() => drawMeasurementOverlay());
+});
 
 // ─── ERROR ───────────────────────────────────────────────────────────────────
 function showError(m){const d=document.getElementById('errorMessage');d.textContent=m;d.style.display='block';}
@@ -758,6 +1276,225 @@ function toggleOthersInput(){
 }
 function setPreparedBy(n){document.getElementById('preparedBy').value=n;}
 
+// ─── CHART SCROLL & ZOOM ─────────────────────────────────────────────────────
+
+// Brief non-blocking toast at bottom of screen
+function showToast(msg, durationMs) {
+    durationMs = durationMs || 3000;
+    let el = document.getElementById('navToast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'navToast';
+        el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1e293b;color:white;padding:10px 22px;border-radius:30px;font-size:0.95em;font-weight:600;z-index:9998;opacity:0;transition:opacity 0.3s;pointer-events:none;white-space:nowrap;box-shadow:0 4px 15px rgba(0,0,0,0.3);';
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, durationMs);
+}
+
+// Rightmost timestamp available in memory
+function getLatestDataTime() {
+    if (cachedTo) return cachedTo;
+    if (allData.length >= 2) return parseTimestamp(allData[allData.length-1][0].toString());
+    return null;
+}
+
+function toDateStr(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function toTimeStr(d) {
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+// Read current view window from inputs
+function getViewWindow() {
+    const sd=document.getElementById('startDate').value, st=document.getElementById('startTime').value;
+    const ed=document.getElementById('endDate').value,   et=document.getElementById('endTime').value;
+    return { startDT: new Date(`${sd}T${st}`), endDT: new Date(`${ed}T${et}`) };
+}
+
+// Write view window back to inputs
+function setViewWindow(startDT, endDT) {
+    document.getElementById('startDate').value = toDateStr(startDT);
+    document.getElementById('startTime').value = toTimeStr(startDT);
+    document.getElementById('endDate').value   = toDateStr(endDT);
+    document.getElementById('endTime').value   = toTimeStr(endDT);
+}
+
+// Apply a new view window: during a hold, re-slice from cache and update
+// chart data in-place. On release do a full loadDataForRange to fetch anything
+// not yet in cache.
+function applyViewWindow(startDT, endDT, commit) {
+    setViewWindow(startDT, endDT);
+    if (commit) {
+        loadDataForRange();
+    } else {
+        const rows = sliceCache(startDT, endDT);
+        if (rows.length >= 2) {
+            // Serve from cache: rebuild allData then re-render
+            allData = cachedHeader ? [cachedHeader, ...rows] : [rows[0], ...rows];
+            renderChart();
+        } else if (chart) {
+            // Nothing in cache yet — at least pan the axis so it feels responsive
+            chart.options.scales.x.min = startDT.getTime();
+            chart.options.scales.x.max = endDT.getTime();
+            chart.update('none');
+        }
+    }
+}
+
+function scrollChart(minutes, commit) {
+    const { startDT, endDT } = getViewWindow();
+    const ms = minutes * 60000;
+    let newStart = new Date(startDT.getTime() + ms);
+    let newEnd   = new Date(endDT.getTime()   + ms);
+
+    if (minutes > 0) {
+        const latest = getLatestDataTime();
+        if (latest && newStart >= latest) {
+            showToast('⚠️ No more data ahead — please reload to get latest data');
+            return;
+        }
+        if (latest && newEnd > new Date(latest.getTime() + 60000)) {
+            const span = endDT - startDT;
+            newEnd   = latest;
+            newStart = new Date(newEnd.getTime() - span);
+        }
+    }
+
+    applyViewWindow(newStart, newEnd, commit);
+}
+
+function zoomChart(direction, stepMinutes, commit) {
+    const { startDT, endDT } = getViewWindow();
+    const step  = (stepMinutes || 5) * 60000;
+    const delta = direction * step;
+
+    const latest = getLatestDataTime();
+    const atRightEdge = latest && (endDT >= new Date(latest.getTime() - 2 * 60000));
+
+    let newStart, newEnd;
+    if (atRightEdge) {
+        newEnd   = endDT;
+        newStart = new Date(startDT.getTime() + delta);
+    } else {
+        newStart = new Date(startDT.getTime() + delta);
+        newEnd   = new Date(endDT.getTime()   - delta);
+    }
+
+    if (newEnd - newStart < 5 * 60000) {
+        showToast('⚠️ Cannot zoom in further');
+        return;
+    }
+
+    applyViewWindow(newStart, newEnd, commit);
+}
+
+// ─── HOLD-TO-REPEAT FOR NAV BUTTONS ──────────────────────────────────────────
+// SMOOTH HOLD BEHAVIOUR:
+//   • While button is held  → instantly pan/zoom the chart axis only (no rebuild)
+//   • On release            → one full loadDataForRange() to fetch any missing data
+//
+// Hold duration phases for step size:
+//   0 – 3 s  → ±5 min per tick
+//   3 – 6 s  → ±10 min per tick
+//   6 s +    → ±30 min per tick
+//
+// Repeat interval (how fast ticks fire):
+//   0 – 600 ms  → 200 ms
+//   600 – 1500  → 100 ms
+//   1500 ms+    → 50 ms
+(function attachHoldButtons() {
+    function getStepMinutes() {
+        const held = Date.now() - holdStart;
+        if (held < 3000) return 5;
+        if (held < 6000) return 10;
+        return 30;
+    }
+
+    function getInterval() {
+        const held = Date.now() - holdStart;
+        if (held < 600)  return 200;
+        if (held < 1500) return 100;
+        return 50;
+    }
+
+    // During hold: commit=false (axis pan only). On release: commit=true (full reload).
+    const navActions = {
+        navLeft:    () => scrollChart(-getStepMinutes(), false),
+        navRight:   () => scrollChart( getStepMinutes(), false),
+        navZoomIn:  () => zoomChart(1,  getStepMinutes(), false),
+        navZoomOut: () => zoomChart(-1, getStepMinutes(), false),
+    };
+    const navCommit = {
+        navLeft:    () => scrollChart(-getStepMinutes(), true),
+        navRight:   () => scrollChart( getStepMinutes(), true),
+        navZoomIn:  () => zoomChart(1,  getStepMinutes(), true),
+        navZoomOut: () => zoomChart(-1, getStepMinutes(), true),
+    };
+
+    let holdTimer    = null;
+    let holdStart    = null;
+    let activeId     = null;
+    let activeAction = null;
+
+    function scheduleNext() {
+        holdTimer = setTimeout(() => {
+            if (!activeAction) return;
+            activeAction();
+            scheduleNext();
+        }, getInterval());
+    }
+
+    function startHold(id, action) {
+        stopHold(false);
+        activeId     = id;
+        activeAction = action;
+        holdStart    = Date.now();
+        action();           // immediate first tick
+        scheduleNext();
+    }
+
+    function stopHold(doCommit) {
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        // On release, do one full reload so missing data is fetched
+        if (doCommit && activeId && navCommit[activeId]) {
+            loadDataForRange();
+        }
+        activeAction = null;
+        activeId     = null;
+        holdStart    = null;
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        Object.entries(navActions).forEach(([id, action]) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+
+            btn.addEventListener('mousedown',  (e) => { if (btn.disabled) return; e.preventDefault(); startHold(id, action); });
+            btn.addEventListener('mouseup',    () => stopHold(true));
+            btn.addEventListener('mouseleave', () => stopHold(true));
+
+            btn.addEventListener('touchstart', (e) => { if (btn.disabled) return; e.preventDefault(); startHold(id, action); }, { passive: false });
+            btn.addEventListener('touchend',   () => stopHold(true));
+            btn.addEventListener('touchcancel',() => stopHold(false));
+        });
+    });
+})();
+function handleGraphTitleClickPF2() {
+    document.getElementById('graphTitle').value = 'CPIL - 03 / PF';
+    if (isLinkingEnabled) {
+        const sel = document.getElementById('resinType');
+        for (let i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value === 'PF') { sel.selectedIndex = i; break; }
+        }
+        document.getElementById('kettleNo').value = '2';
+        toggleOthersInput();
+    }
+}
+
 // ─── DOWNLOAD ────────────────────────────────────────────────────────────────
 function downloadGraph(){
     const gt=document.getElementById('graphTitle').value||'RESIN PLANT KETTLE TEMPERATURE MONITORING';
@@ -783,9 +1520,90 @@ function downloadGraph(){
     ctx.font='16px Arial';
     td.forEach((r,i)=>{ctx.fillStyle=i%2===0?'white':'#f9f9f9'; ctx.fillRect(tX,y,tW,rH); ctx.strokeStyle='#ddd'; ctx.strokeRect(tX,y,tW,rH); ctx.fillStyle='black'; ctx.fillText(r.label,tX+10,y+24); ctx.fillText(r.value,tX+lW+10,y+24); y+=rH;});
     if(rc){y+=25;ctx.font='bold 18px Arial';ctx.fillStyle='black';ctx.fillText('Comments:',50,y);y+=22;ctx.font='15px Arial';const lines=wrapText(ctx,rc,tc.width-100,50,y,20);y+=lines*20;}
-    if(s1!=='--'&&e1!=='--'){y+=25;ctx.font='bold 17px Arial';ctx.fillText('Duration 1:',50,y);y+=22;ctx.font='15px Arial';ctx.fillText(`Start: ${s1}`,50,y);y+=20;ctx.fillText(`End: ${e1}`,50,y);y+=20;ctx.fillText(`Duration: ${d1}`,50,y);}
-    if(s2!=='--'&&e2!=='--'){y+=25;ctx.font='bold 17px Arial';ctx.fillText('Duration 2:',50,y);y+=22;ctx.font='15px Arial';ctx.fillText(`Start: ${s2}`,50,y);y+=20;ctx.fillText(`End: ${e2}`,50,y);y+=20;ctx.fillText(`Duration: ${d2}`,50,y);}
-    ctx.drawImage(cc,0,y+20);
+    if(s1!=='--'&&e1!=='--'){y+=25;ctx.font='bold 17px Arial';ctx.fillStyle='#8b5cf6';ctx.fillText('Duration 1:',50,y);y+=22;ctx.font='15px Arial';ctx.fillText(`Start: ${s1}`,50,y);y+=20;ctx.fillText(`End: ${e1}`,50,y);y+=20;ctx.fillText(`Duration: ${d1}`,50,y);}
+    if(s2!=='--'&&e2!=='--'){y+=25;ctx.font='bold 17px Arial';ctx.fillStyle='#f59e0b';ctx.fillText('Duration 2:',50,y);y+=22;ctx.font='15px Arial';ctx.fillText(`Start: ${s2}`,50,y);y+=20;ctx.fillText(`End: ${e2}`,50,y);y+=20;ctx.fillText(`Duration: ${d2}`,50,y);}
+
+    // Draw the chart
+    const chartOffsetY = y + 20;
+    ctx.drawImage(cc, 0, chartOffsetY);
+
+    // Draw measurement overlays directly onto export canvas using Chart.js pixel coords
+    if (chart) {
+        const dpr = window.devicePixelRatio || 1;
+        const ca = chart.chartArea;
+        // getPixelForValue() returns CSS px. The export canvas is physical px (CSS*DPR).
+        // So we must multiply by dpr when drawing on the export canvas.
+        // M1=purple, M2=amber — matches legend colors
+        const overlayConfigs = [
+            { start: measureStart1, end: measureEnd1, color: '#8b5cf6' },
+            { start: measureStart2, end: measureEnd2, color: '#f59e0b' }
+        ];
+
+        overlayConfigs.forEach(cfg => {
+            if (!cfg.start) return;
+            // CSS px from Chart.js → physical px for export canvas
+            const x1 = chart.scales.x.getPixelForValue(cfg.start.getTime()) * dpr;
+            const areaBottom = ca.bottom * dpr;
+            const areaTop = ca.top * dpr;
+            const color = cfg.color;
+
+            ctx.save();
+            ctx.translate(0, chartOffsetY);
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+
+            // Drop line start
+            ctx.setLineDash([5*dpr, 4*dpr]);
+            ctx.lineWidth = 2*dpr;
+            ctx.beginPath(); ctx.moveTo(x1, areaTop); ctx.lineTo(x1, areaBottom); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.beginPath(); ctx.arc(x1, areaBottom, 4*dpr, 0, Math.PI*2); ctx.fill();
+
+            if (cfg.end) {
+                const x2 = chart.scales.x.getPixelForValue(cfg.end.getTime()) * dpr;
+
+                // Drop line end
+                ctx.setLineDash([5*dpr, 4*dpr]);
+                ctx.beginPath(); ctx.moveTo(x2, areaTop); ctx.lineTo(x2, areaBottom); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.beginPath(); ctx.arc(x2, areaBottom, 4*dpr, 0, Math.PI*2); ctx.fill();
+
+                // Arrow
+                const arrowY = areaBottom + 22*dpr;
+                const minX = Math.min(x1,x2), maxX = Math.max(x1,x2);
+                const midX = (x1+x2)/2;
+
+                // Horizontal line
+                ctx.lineWidth = 2*dpr;
+                ctx.beginPath(); ctx.moveTo(minX, arrowY); ctx.lineTo(maxX, arrowY); ctx.stroke();
+
+                // Arrowheads
+                const ah = 5*dpr, aw = 4*dpr;
+                ctx.beginPath(); ctx.moveTo(minX+ah, arrowY-aw); ctx.lineTo(minX, arrowY); ctx.lineTo(minX+ah, arrowY+aw); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(maxX-ah, arrowY-aw); ctx.lineTo(maxX, arrowY); ctx.lineTo(maxX-ah, arrowY+aw); ctx.stroke();
+
+                // Label
+                const ms = Math.abs(cfg.end - cfg.start);
+                const mins = Math.round(ms/60000), h=Math.floor(mins/60), m=mins%60;
+                const label = h>0?`${h}h ${m}m`:`${m}m`;
+                const fs = 12*dpr;
+                ctx.font = `bold ${fs}px Arial`;
+                const tw = ctx.measureText(label).width;
+                const padX = 8*dpr, padY = 4*dpr;
+                const bw = tw + padX*2, bh = fs + padY*2;
+                const bx = midX - bw/2, by = arrowY - bh/2;
+                ctx.fillStyle = 'white';
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.strokeStyle = color; ctx.lineWidth = 1.5*dpr;
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.fillStyle = color;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(label, midX, arrowY);
+            }
+            ctx.restore();
+        });
+    }
+
     const a=document.createElement('a'); a.download=`Temp_Report_K${kn}_${fr}_B${bn}.png`; a.href=tc.toDataURL('image/png'); a.click();
 }
 function wrapText(ctx,text,maxW,x,y,lh){const words=text.split(' ');let line='',lines=0;for(let i=0;i<words.length;i++){const t=line+words[i]+' ';if(ctx.measureText(t).width>maxW&&i>0){ctx.fillText(line,x,y);line=words[i]+' ';y+=lh;lines++;}else line=t;}ctx.fillText(line,x,y);return lines+1;}
