@@ -285,7 +285,7 @@
         <div class="dual-duration-container">
             <div class="duration-measurement">
                 <h3>⏱️ Duration Measurement 1</h3>
-                <div class="duration-instruction">Click two points on chart to measure.</div>
+                <div class="duration-instruction">Click a point to set start — then move cursor for live preview, click to fix end. <em>(Mobile: long-press to start, drag, release to fix)</em></div>
                 <div class="duration-result">
                     <div class="duration-item"><div class="label">Start</div><div class="value" id="startTimeMeasure1">--</div></div>
                     <div class="duration-item"><div class="label">End</div><div class="value" id="endTimeMeasure1">--</div></div>
@@ -294,7 +294,7 @@
             </div>
             <div class="duration-measurement">
                 <h3>⏱️ Duration Measurement 2</h3>
-                <div class="duration-instruction">Click two points on chart to measure.</div>
+                <div class="duration-instruction">Click a point to set start — then move cursor for live preview, click to fix end. <em>(Mobile: long-press to start, drag, release to fix)</em></div>
                 <div class="duration-result">
                     <div class="duration-item"><div class="label">Start</div><div class="value" id="startTimeMeasure2">--</div></div>
                     <div class="duration-item"><div class="label">End</div><div class="value" id="endTimeMeasure2">--</div></div>
@@ -375,6 +375,11 @@ let isMeasuring1 = false, isMeasuring2 = false;
 let measureStart1 = null, measureEnd1 = null, measureStart2 = null, measureEnd2 = null;
 let zeroRemovedCount = 0;
 let loadingInterval = null, quoteIndex = 0, isLinkingEnabled = true;
+
+// Live preview state (mouse hover after first click)
+let livePreviewTime = null;   // Date while hovering before 2nd click
+let touchLongPressTimer = null;  // for mobile long-press detection
+let touchStarted = false;        // mobile: long-press confirmed, dragging live
 
 // ─── BACKGROUND CACHE ────────────────────────────────────────────────────────
 // cachedData holds ALL rows fetched so far, sorted by time, deduplicated.
@@ -999,6 +1004,7 @@ function renderChart() {
         });
         chart.update('none');
         canvas.onclick = handleChartClick;
+        attachCanvasInteraction(canvas);
         updateKettleStatuses();
         requestAnimationFrame(() => drawMeasurementOverlay());
         return;
@@ -1032,6 +1038,7 @@ function renderChart() {
         }
     });
     canvas.onclick = handleChartClick;
+    attachCanvasInteraction(canvas);
     updateKettleStatuses();
     requestAnimationFrame(() => drawMeasurementOverlay());
 }
@@ -1129,29 +1136,140 @@ function setActiveMeasurement(n){
     currentMeasurement=n;
     document.getElementById('measureBtn1').className=n===1?'btn-primary':'btn-secondary';
     document.getElementById('measureBtn2').className=n===2?'btn-primary':'btn-secondary';
+    // Update cursor hint
+    const canvas = document.getElementById('tempChart');
+    if (canvas) canvas.style.cursor = 'crosshair';
 }
-function handleChartClick(event){
-    if(!chart)return;
-    const canvas=document.getElementById('tempChart'),rect=canvas.getBoundingClientRect();
-    // Use devicePixelRatio-aware pixel position
-    const clickX = event.clientX - rect.left;
-    const valueX=chart.scales.x.getValueForPixel(clickX);
-    if(!valueX)return;
-    let closest=null,minDiff=Infinity;
-    for(const row of displayData){const ts=parseTimestamp(row[0].toString()),diff=Math.abs(ts-valueX);if(diff<minDiff){minDiff=diff;closest=ts;}}
-    if(!closest)return;
-    const m=currentMeasurement,measuring=m===1?isMeasuring1:isMeasuring2,prefix=`Measure${m}`;
-    if(!measuring){
-        if(m===1){measureStart1=closest;isMeasuring1=true;}else{measureStart2=closest;isMeasuring2=true;}
-        document.getElementById(`startTime${prefix}`).textContent=closest.toLocaleString();
-        document.getElementById(`endTime${prefix}`).textContent='--'; document.getElementById(`duration${prefix}`).textContent='--';
-        highlightedPoints[`m${m}`]=[{timestamp:closest}];
-    } else {
-        if(m===1){measureEnd1=closest;isMeasuring1=false;showDuration(Math.abs(measureEnd1-measureStart1),`duration${prefix}`);}
-        else{measureEnd2=closest;isMeasuring2=false;showDuration(Math.abs(measureEnd2-measureStart2),`duration${prefix}`);}
-        document.getElementById(`endTime${prefix}`).textContent=closest.toLocaleString();
-        highlightedPoints[`m${m}`].push({timestamp:closest});
+function attachCanvasInteraction(canvas) {
+    // Remove old listeners by replacing with cloned node, then re-attach
+    // (simpler: just always overwrite — same canvas ref, so use named fns which are idempotent)
+    canvas.removeEventListener('mousemove', handleChartMouseMove);
+    canvas.removeEventListener('mouseout',  handleChartMouseOut);
+    canvas.removeEventListener('touchstart', handleTouchStart);
+    canvas.removeEventListener('touchmove',  handleTouchMove);
+    canvas.removeEventListener('touchend',   handleTouchEnd);
+    canvas.addEventListener('mousemove', handleChartMouseMove);
+    canvas.addEventListener('mouseout',  handleChartMouseOut);
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove',  handleTouchMove,  { passive: false });
+    canvas.addEventListener('touchend',   handleTouchEnd,   { passive: false });
+    // Change cursor to crosshair when a measurement is being set
+    canvas.style.cursor = isCurrentlyMeasuring() ? 'crosshair' : 'default';
+}
+
+function getTimeFromCanvasX(clientX) {
+    if (!chart) return null;
+    const canvas = document.getElementById('tempChart');
+    const rect = canvas.getBoundingClientRect();
+    const clickX = clientX - rect.left;
+    const valueX = chart.scales.x.getValueForPixel(clickX);
+    if (!valueX) return null;
+    let closest = null, minDiff = Infinity;
+    for (const row of displayData) {
+        const ts = parseTimestamp(row[0].toString()), diff = Math.abs(ts - valueX);
+        if (diff < minDiff) { minDiff = diff; closest = ts; }
     }
+    return closest;
+}
+
+function isCurrentlyMeasuring() {
+    return currentMeasurement === 1 ? isMeasuring1 : isMeasuring2;
+}
+
+function handleChartClick(event) {
+    if (!chart) return;
+    const closest = getTimeFromCanvasX(event.clientX);
+    if (!closest) return;
+    const m = currentMeasurement, measuring = isCurrentlyMeasuring(), prefix = `Measure${m}`;
+    if (!measuring) {
+        // First click — set start, activate live preview
+        if (m === 1) { measureStart1 = closest; isMeasuring1 = true; }
+        else { measureStart2 = closest; isMeasuring2 = true; }
+        livePreviewTime = closest; // initialise preview at start point
+        document.getElementById(`startTime${prefix}`).textContent = closest.toLocaleString();
+        document.getElementById(`endTime${prefix}`).textContent = '…move cursor…';
+        document.getElementById(`duration${prefix}`).textContent = '…';
+        highlightedPoints[`m${m}`] = [{ timestamp: closest }];
+    } else {
+        // Second click — fix end point, kill live preview
+        livePreviewTime = null;
+        if (m === 1) { measureEnd1 = closest; isMeasuring1 = false; showDuration(Math.abs(measureEnd1 - measureStart1), `duration${prefix}`); }
+        else { measureEnd2 = closest; isMeasuring2 = false; showDuration(Math.abs(measureEnd2 - measureStart2), `duration${prefix}`); }
+        document.getElementById(`endTime${prefix}`).textContent = closest.toLocaleString();
+        highlightedPoints[`m${m}`].push({ timestamp: closest });
+        // Restore cursor
+        const canvas = document.getElementById('tempChart');
+        if (canvas) canvas.style.cursor = 'default';
+    }
+    renderChart();
+    drawMeasurementOverlay();
+}
+
+function handleChartMouseMove(event) {
+    if (!chart || !isCurrentlyMeasuring()) return;
+    const closest = getTimeFromCanvasX(event.clientX);
+    if (!closest) return;
+    livePreviewTime = closest;
+    // Update live end-time and duration display
+    const m = currentMeasurement, prefix = `Measure${m}`;
+    const startTs = m === 1 ? measureStart1 : measureStart2;
+    if (!startTs) return;
+    document.getElementById(`endTime${prefix}`).textContent = closest.toLocaleString();
+    const ms = Math.abs(closest - startTs);
+    const mins = Math.round(ms / 60000), h = Math.floor(mins / 60), mn = mins % 60;
+    document.getElementById(`duration${prefix}`).textContent = h > 0 ? `${h}h ${mn}m` : `${mn}m`;
+    drawMeasurementOverlay();
+}
+
+function handleChartMouseOut() {
+    if (!isCurrentlyMeasuring()) return;
+    // Reset live display but keep start visible
+    const m = currentMeasurement, prefix = `Measure${m}`;
+    document.getElementById(`endTime${prefix}`).textContent = '…move cursor…';
+    document.getElementById(`duration${prefix}`).textContent = '…';
+    livePreviewTime = null;
+    drawMeasurementOverlay();
+}
+
+// ── Mobile touch: long-press to start, drag to preview, lift to fix ──────────
+function handleTouchStart(event) {
+    if (!chart) return;
+    touchStarted = false;
+    clearTimeout(touchLongPressTimer);
+    const touch = event.touches[0];
+    touchLongPressTimer = setTimeout(() => {
+        // Long-press confirmed → treat as first click
+        touchStarted = true;
+        // Vibrate briefly for haptic feedback (if supported)
+        if (navigator.vibrate) navigator.vibrate(40);
+        handleChartClick({ clientX: touch.clientX });
+        event.preventDefault();
+    }, 400); // 400ms long-press threshold
+}
+
+function handleTouchMove(event) {
+    if (!touchStarted || !isCurrentlyMeasuring()) return;
+    clearTimeout(touchLongPressTimer);
+    event.preventDefault();
+    const touch = event.touches[0];
+    handleChartMouseMove({ clientX: touch.clientX });
+}
+
+function handleTouchEnd(event) {
+    clearTimeout(touchLongPressTimer);
+    if (!touchStarted || !isCurrentlyMeasuring()) { touchStarted = false; return; }
+    touchStarted = false;
+    // Treat lift as the second click to fix the end point
+    const changedTouch = event.changedTouches[0];
+    const closest = getTimeFromCanvasX(changedTouch.clientX);
+    if (!closest) return;
+    livePreviewTime = null;
+    const m = currentMeasurement, prefix = `Measure${m}`;
+    const startTs = m === 1 ? measureStart1 : measureStart2;
+    if (m === 1) { measureEnd1 = closest; isMeasuring1 = false; showDuration(Math.abs(measureEnd1 - (startTs||closest)), `duration${prefix}`); }
+    else { measureEnd2 = closest; isMeasuring2 = false; showDuration(Math.abs(measureEnd2 - (startTs||closest)), `duration${prefix}`); }
+    document.getElementById(`endTime${prefix}`).textContent = closest.toLocaleString();
+    highlightedPoints[`m${m}`].push({ timestamp: closest });
     renderChart();
     drawMeasurementOverlay();
 }
@@ -1176,8 +1294,8 @@ function drawMeasurementOverlay() {
 
     // M1 = purple (#8b5cf6), M2 = orange/amber (#f59e0b) — matches legend
     const configs = [
-        { start: measureStart1, end: measureEnd1, color: '#8b5cf6', mId: 'p' },
-        { start: measureStart2, end: measureEnd2, color: '#f59e0b', mId: 'y' }
+        { start: measureStart1, end: measureEnd1 || (isMeasuring1 && livePreviewTime ? livePreviewTime : null), color: '#8b5cf6', mId: 'p', isLive: isMeasuring1 && !measureEnd1 },
+        { start: measureStart2, end: measureEnd2 || (isMeasuring2 && livePreviewTime ? livePreviewTime : null), color: '#f59e0b', mId: 'y', isLive: isMeasuring2 && !measureEnd2 }
     ];
 
     let html = `<defs>
@@ -1210,10 +1328,16 @@ function drawMeasurementOverlay() {
         if (!cfg.end) return;
         const x2 = toPx(cfg.end.getTime());
 
-        // Drop line for end point
+        // Drop line for end point — dashed & lighter if live preview
+        const endOpacity = cfg.isLive ? '0.55' : '0.85';
+        const endDash = cfg.isLive ? '4,4' : '5,4';
         html += `<line x1="${x2}" y1="${areaTop}" x2="${x2}" y2="${areaBottom}"
-            stroke="${color}" stroke-width="2" stroke-dasharray="5,4" opacity="0.85"/>`;
-        html += `<circle cx="${x2}" cy="${areaBottom}" r="4" fill="${color}" opacity="0.9"/>`;
+            stroke="${color}" stroke-width="2" stroke-dasharray="${endDash}" opacity="${endOpacity}"/>`;
+        // Live end dot with pulsing ring
+        html += `<circle cx="${x2}" cy="${areaBottom}" r="4" fill="${color}" opacity="${endOpacity}"/>`;
+        if (cfg.isLive) {
+            html += `<circle cx="${x2}" cy="${areaBottom}" r="9" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.35" stroke-dasharray="3,3"/>`;
+        }
 
         // Double-sided arrow — sits just below the chart area
         const arrowY = areaBottom + 22;
@@ -1226,24 +1350,28 @@ function drawMeasurementOverlay() {
         const label = h > 0 ? `${h}h ${m}m` : `${m}m`;
         const midX = (x1 + x2) / 2;
 
+        // Arrow line style: dashed if live
+        const arrowDash = cfg.isLive ? 'stroke-dasharray="6,3"' : '';
+        const arrowOpacity = cfg.isLive ? '0.7' : '0.95';
+
         // Horizontal connecting line with arrowheads pointing OUTWARD
         const ah = 7, aw = 4; // arrowhead size
         html += `<line x1="${minX + ah}" y1="${arrowY}" x2="${maxX - ah}" y2="${arrowY}"
-            stroke="${color}" stroke-width="2" opacity="0.95"/>`;
+            stroke="${color}" stroke-width="2" ${arrowDash} opacity="${arrowOpacity}"/>`;
         // Left arrowhead pointing LEFT (outward)
         html += `<polyline points="${minX+ah},${arrowY-aw} ${minX},${arrowY} ${minX+ah},${arrowY+aw}"
-            fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="0.95"/>`;
+            fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="${arrowOpacity}"/>`;
         // Right arrowhead pointing RIGHT (outward)
         html += `<polyline points="${maxX-ah},${arrowY-aw} ${maxX},${arrowY} ${maxX-ah},${arrowY+aw}"
-            fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="0.95"/>`;
+            fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="${arrowOpacity}"/>`;
 
-        // Label background pill
+        // Label background pill — add "live" badge when previewing
         const lblW = label.length * 9 + 16;
         html += `<rect x="${midX - lblW/2}" y="${arrowY - 14}" width="${lblW}" height="20"
-            rx="4" fill="white" stroke="${color}" stroke-width="1.5" opacity="0.95"/>`;
+            rx="4" fill="${cfg.isLive ? color : 'white'}" stroke="${color}" stroke-width="1.5" opacity="${arrowOpacity}"/>`;
         html += `<text x="${midX}" y="${arrowY + 1}" text-anchor="middle" dominant-baseline="middle"
             font-size="12" font-weight="700" font-family="Segoe UI,Arial,sans-serif"
-            fill="${color}">${label}</text>`;
+            fill="${cfg.isLive ? 'white' : color}">${label}</text>`;
     });
 
     svg.innerHTML = html;
