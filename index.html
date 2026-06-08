@@ -266,7 +266,7 @@
 
         <div class="zero-filter-card">
             <label>
-                <input type="checkbox" id="hideZeroValues"> 🔘 Hide 0.0°C readings (meter off)
+                <input type="checkbox" id="hideZeroValues" checked> 🔘 Hide 0.0°C readings (meter off)
             </label>
             <div class="gap-toggle">
                 <label>
@@ -590,6 +590,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('kettle2Check').addEventListener('change', renderChart);
     document.getElementById('kettle3Check').addEventListener('change', renderChart);
     document.getElementById('joinShortGaps').addEventListener('change', renderChart);
+    document.getElementById('hideZeroValues').addEventListener('change', renderChart);
+    document.getElementById('breakLineAtGaps').addEventListener('change', renderChart);
     document.getElementById('linkToggle').addEventListener('change', updateLinkToggle);
     updateLinkToggle();
     loadLast24Hours();
@@ -927,15 +929,29 @@ function renderChart() {
         return num;
     };
 
-    const joinShortGaps = document.getElementById('joinShortGaps').checked;
+    const joinShortGaps  = document.getElementById('joinShortGaps').checked;
+    const breakAtGaps    = document.getElementById('breakLineAtGaps').checked;
     const LONG_GAP_MS  = 30 * 60 * 1000;
     const SHORT_GAP_MS =  5 * 60 * 1000;
     let prevTs = null;
+    // Track whether the previous row was all-zero-hidden (for breakLineAtGaps)
+    let prevWasAllZero = false;
 
     const isMidnightCrossing = (a, b) => a.toLocaleDateString() !== b.toLocaleDateString();
 
     for(const row of displayData){
         const ts = parseTimestamp(row[0].toString());
+
+        const v1 = processVal(row[1]);
+        const v2 = processVal(row[2]);
+        const v3 = processVal(row[3]);
+
+        // Detect whether this row was suppressed purely because all values were 0
+        // (raw values are 0 but hideZero turned them to null)
+        const rawAllZero = hideZero && [row[1],row[2],row[3]].every(v => {
+            const n = parseFloat(v);
+            return !isNaN(n) && n === 0;
+        });
 
         if (prevTs !== null) {
             const gapMs = ts - prevTs;
@@ -943,7 +959,9 @@ function renderChart() {
             const shouldBreak =
                 midnight ||
                 gapMs > LONG_GAP_MS ||
-                (!joinShortGaps && gapMs > SHORT_GAP_MS);
+                (!joinShortGaps && gapMs > SHORT_GAP_MS) ||
+                // break when coming out of a hidden-zero run
+                (breakAtGaps && prevWasAllZero && !rawAllZero);
 
             if (shouldBreak) {
                 const gapTs = new Date(prevTs.getTime() + 1000);
@@ -953,12 +971,12 @@ function renderChart() {
             }
         }
         prevTs = ts;
+        prevWasAllZero = rawAllZero;
+
+        // Skip pushing the point itself when all values are zero-hidden
+        if (rawAllZero) continue;
 
         timestamps.push(ts.toISOString());
-
-        const v1 = processVal(row[1]);
-        const v2 = processVal(row[2]);
-        const v3 = processVal(row[3]);
 
         t1.push(k1 ? v1 : null);
         t2.push(k2 ? v2 : null);
