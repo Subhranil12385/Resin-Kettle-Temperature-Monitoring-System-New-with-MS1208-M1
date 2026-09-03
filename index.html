@@ -143,6 +143,10 @@
         .batch-box.ongoing .batch-icon::after { content: ' 🔥'; }
         .nav-disabled-hint { font-size: 0.78em; color: #92400e; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 5px 14px; margin-bottom: 6px; text-align: center; display: none; }
         .nav-disabled-hint.show { display: block; }
+        .view-tabs { display: flex; justify-content: center; gap: 12px; margin-bottom: 25px; flex-wrap: wrap; }
+        .tab-btn { padding: 14px 30px; border: none; border-radius: 12px; font-size: 1.05em; font-weight: 700; cursor: pointer; transition: all 0.25s; background: rgba(255,255,255,0.25); color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .tab-btn:hover { background: rgba(255,255,255,0.38); transform: translateY(-2px); }
+        .tab-btn.active { background: white; color: #667eea; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
     </style>
 </head>
 <body>
@@ -167,6 +171,11 @@
         <p>Real-time monitoring via MS1208-M1 RS-485 Modbus (8 Channels) · ESP8266 · Google Sheets</p>
     </div>
 
+    <div class="view-tabs">
+        <button class="tab-btn active" id="tabKettleBtn" onclick="switchTab('kettle')">🍯 Kettle Temperatures</button>
+        <button class="tab-btn" id="tabOutletBtn" onclick="switchTab('outlet')">🛢️ Outlet Temperature</button>
+    </div>
+
     <div class="status-card">
         <div class="status-header">
             <div class="status-indicators">
@@ -182,12 +191,15 @@
             <div class="last-update">Last Update: <strong id="lastUpdate">--</strong></div>
         </div>
 
-        <div class="current-temps">
+        <div class="current-temps" id="kettleTempsRow">
             <div class="temp-box" id="tempBox1"><h3>Kettle 1 (CH1)</h3><div class="value" id="temp1">--°C</div><div class="kettle-status" id="kettleStatus1"></div><div class="temp-high-low"><span class="low" id="lowTemp1">--°C</span><span class="high" id="highTemp1">--°C</span></div></div>
             <div class="temp-box" id="tempBox2"><h3>Kettle 2 (CH2)</h3><div class="value" id="temp2">--°C</div><div class="kettle-status" id="kettleStatus2"></div><div class="temp-high-low"><span class="low" id="lowTemp2">--°C</span><span class="high" id="highTemp2">--°C</span></div></div>
             <div class="temp-box" id="tempBox3"><h3>Kettle 3 (CH3)</h3><div class="value" id="temp3">--°C</div><div class="kettle-status" id="kettleStatus3"></div><div class="temp-high-low"><span class="low" id="lowTemp3">--°C</span><span class="high" id="highTemp3">--°C</span></div></div>
         </div>
-        <div class="current-temps" style="margin-top:12px;">
+        <div class="current-temps" id="outletTempsRow" style="display:none;">
+            <div class="temp-box" id="tempBox4"><h3>Kettle 2 Outlet (CH4)</h3><div class="value" id="temp4">--°C</div><div class="temp-high-low"><span class="low" id="lowTemp4">--°C</span><span class="high" id="highTemp4">--°C</span></div></div>
+        </div>
+        <div class="current-temps" id="batchRow" style="margin-top:12px;">
             <div class="batch-box" id="batchBox1"><div class="batch-icon">🏭</div><div class="batch-label">Kettle 1 Batches</div><div class="batch-value" id="batchCount1">--</div><div class="batch-sub">in loaded range</div></div>
             <div class="batch-box" id="batchBox2"><div class="batch-icon">🏭</div><div class="batch-label">Kettle 2 Batches</div><div class="batch-value" id="batchCount2">--</div><div class="batch-sub">in loaded range</div></div>
             <div class="batch-box" id="batchBox3"><div class="batch-icon">🏭</div><div class="batch-label">Kettle 3 Batches</div><div class="batch-value" id="batchCount3">--</div><div class="batch-sub">in loaded range</div></div>
@@ -231,8 +243,8 @@
     <div id="errorMessage" class="error" style="display: none;"></div>
 
     <div class="chart-card">
-        <h2>📈 Temperature Trends</h2>
-        <div class="kettle-selection">
+        <h2 id="chartSectionTitle">📈 Kettle Temperature Trends</h2>
+        <div class="kettle-selection" id="kettleCheckboxRow">
             <label class="kettle-checkbox"><input type="checkbox" id="kettle1Check" checked> Kettle 1 (CH1)</label>
             <label class="kettle-checkbox"><input type="checkbox" id="kettle2Check" checked> Kettle 2 (CH2)</label>
             <label class="kettle-checkbox"><input type="checkbox" id="kettle3Check" checked> Kettle 3 (CH3)</label>
@@ -309,7 +321,7 @@
         </div>
     </div>
 
-    <div class="report-section">
+    <div class="report-section" id="reportSection">
         <h2>📋 Report Generation</h2>
         <div class="report-form">
             <div class="form-group">
@@ -367,7 +379,49 @@
 
 <script>
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycby9_AJmUtAUOllo6qohRulgetPwm0fTeQyoWV51ZRBdXCMl3Ym4nNnMmpoyH1_UTdcR/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzfbedu7854vWncigvowC3xSP8Idl3tBP2nmZ47yYIHp32msc1qJGeDVMpABUAaP4ia/exec';
+
+// ─── TABS: Kettle Temperatures vs Outlet Temperature ─────────────────────────
+// Both tabs share the exact same chart engine (pan/zoom/measurement/caching) —
+// only the set of channels being plotted changes. To add another outlet later,
+// just add another entry here (column = data column index, i.e. CH1=1..CH8=8)
+// and wire up any matching temp-box / checkbox ids.
+let activeTab = 'kettle';
+const TAB_CONFIGS = {
+    kettle: {
+        columns: [1, 2, 3],
+        labels: ['Kettle 1 (CH1)', 'Kettle 2 (CH2)', 'Kettle 3 (CH3)'],
+        colors: ['rgb(239,68,68)', 'rgb(59,130,246)', 'rgb(16,185,129)'],
+        checkboxIds: ['kettle1Check', 'kettle2Check', 'kettle3Check']
+    },
+    outlet: {
+        columns: [4],
+        labels: ['Kettle 2 Outlet (CH4)'],
+        colors: ['rgb(249,115,22)'],
+        checkboxIds: [null] // always plotted, no toggle
+    }
+};
+
+function switchTab(tab) {
+    if (activeTab === tab) return;
+    activeTab = tab;
+
+    document.getElementById('tabKettleBtn').classList.toggle('active', tab === 'kettle');
+    document.getElementById('tabOutletBtn').classList.toggle('active', tab === 'outlet');
+
+    document.getElementById('kettleTempsRow').style.display   = (tab === 'kettle') ? 'grid' : 'none';
+    document.getElementById('outletTempsRow').style.display   = (tab === 'outlet') ? 'grid' : 'none';
+    document.getElementById('batchRow').style.display         = (tab === 'kettle') ? 'grid' : 'none';
+    document.getElementById('kettleCheckboxRow').style.display= (tab === 'kettle') ? 'flex' : 'none';
+    document.getElementById('reportSection').style.display    = (tab === 'kettle') ? 'block' : 'none';
+
+    document.getElementById('chartSectionTitle').textContent =
+        (tab === 'kettle') ? '📈 Kettle Temperature Trends' : '📈 Outlet Temperature Trends';
+
+    // Force a full chart rebuild (dataset count/labels/colors differ between tabs)
+    if (chart) { chart.destroy(); chart = null; }
+    renderChart();
+}
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let chart = null;
@@ -540,6 +594,7 @@ async function silentLiveRefresh() {
                     document.getElementById('lastUpdate').textContent =
                         parseTimestamp(data.statusInfo.lastTimestamp.toString()).toLocaleString();
                 updateTempBox(1,data.statusInfo.temp1); updateTempBox(2,data.statusInfo.temp2); updateTempBox(3,data.statusInfo.temp3);
+                updateTempBox(4,data.statusInfo.temp4);
             }
             // Re-render chart with merged data if current view overlaps live edge
             const sd = document.getElementById('startDate').value;
@@ -784,6 +839,7 @@ async function fetchData(startStr, endStr) {
             updateTempBox(1, data.statusInfo.temp1);
             updateTempBox(2, data.statusInfo.temp2);
             updateTempBox(3, data.statusInfo.temp3);
+            updateTempBox(4, data.statusInfo.temp4);
         } else if (allData.length >= 2) {
             const last = allData[allData.length-1];
             const ts = parseTimestamp(last[0]);
@@ -791,7 +847,7 @@ async function fetchData(startStr, endStr) {
             setMcuBadge(mcuOffline ? 'OFFLINE' : 'ONLINE');
             if (mcuOffline) { setMeterUnknown(); } else { setMeterBadge(last[1],last[2],last[3]); }
             document.getElementById('lastUpdate').textContent = ts.toLocaleString();
-            updateTempBox(1,last[1]); updateTempBox(2,last[2]); updateTempBox(3,last[3]);
+            updateTempBox(1,last[1]); updateTempBox(2,last[2]); updateTempBox(3,last[3]); updateTempBox(4,last[4]);
         }
         if (allData.length < 2) {
             showError('No data found for the selected time range.');
@@ -896,12 +952,12 @@ function parseTimestamp(ts) {
 }
 
 // ─── COUNT ZEROS ─────────────────────────────────────────────────────────────
-function countZeroValues(rows) {
+function countZeroValues(rows, columns) {
     let zeroCount = 0;
     const hideZero = document.getElementById('hideZeroValues').checked;
     if (!hideZero) return 0;
     for (const row of rows) {
-        for (let i = 1; i <= 3; i++) {
+        for (const i of columns) {
             const val = parseFloat(row[i]);
             if (!isNaN(val) && val === 0) zeroCount++;
         }
@@ -910,23 +966,28 @@ function countZeroValues(rows) {
 }
 
 // ─── CHART RENDERING ─────────────────────────────────────────────────────────
+// Generic over TAB_CONFIGS[activeTab] — same engine plots CH1-3 on the Kettle
+// tab or CH4 on the Outlet tab, so pan/zoom/measurement/caching all just work
+// on whichever channel set is active.
 function renderChart() {
     if (allData.length < 2) return;
     const rows = allData.slice(1);
     rows.sort((a, b) => parseTimestamp(a[0].toString()) - parseTimestamp(b[0].toString()));
     displayData = rows;
 
-    zeroRemovedCount = countZeroValues(rows);
+    const cfg = TAB_CONFIGS[activeTab];
+
+    zeroRemovedCount = countZeroValues(rows, cfg.columns);
     document.getElementById('zeroRemovedCount').textContent = zeroRemovedCount;
 
     updateStats(displayData);
 
-    const k1=document.getElementById('kettle1Check').checked;
-    const k2=document.getElementById('kettle2Check').checked;
-    const k3=document.getElementById('kettle3Check').checked;
+    const checks = cfg.checkboxIds.map(id => id ? document.getElementById(id).checked : true);
     const hideZero = document.getElementById('hideZeroValues').checked;
 
-    const timestamps=[], t1=[], t2=[], t3=[], t1h=[], t2h=[], t3h=[];
+    const timestamps = [];
+    const series   = cfg.columns.map(() => []);   // one array per channel
+    const seriesH  = cfg.columns.map(() => []);   // highlight-color array per channel
 
     const processVal = (v) => {
         const num = parseFloat(v);
@@ -949,14 +1010,12 @@ function renderChart() {
     for(const row of displayData){
         const ts = parseTimestamp(row[0].toString());
 
-        const v1 = processVal(row[1]);
-        const v2 = processVal(row[2]);
-        const v3 = processVal(row[3]);
+        const vals = cfg.columns.map(col => processVal(row[col]));
 
-        // Detect whether this row was suppressed purely because all values were 0
-        // (raw values are 0 but hideZero turned them to null)
-        const rawAllZero = hideZero && [row[1],row[2],row[3]].every(v => {
-            const n = parseFloat(v);
+        // Detect whether this row was suppressed purely because all active-tab
+        // channels were 0 (raw values are 0 but hideZero turned them to null)
+        const rawAllZero = hideZero && cfg.columns.every(col => {
+            const n = parseFloat(row[col]);
             return !isNaN(n) && n === 0;
         });
 
@@ -973,8 +1032,8 @@ function renderChart() {
             if (shouldBreak) {
                 const gapTs = new Date(prevTs.getTime() + 1000);
                 timestamps.push(gapTs.toISOString());
-                t1.push(null); t2.push(null); t3.push(null);
-                t1h.push(null); t2h.push(null); t3h.push(null);
+                series.forEach(arr => arr.push(null));
+                seriesH.forEach(arr => arr.push(null));
             }
         }
         prevTs = ts;
@@ -985,13 +1044,13 @@ function renderChart() {
 
         timestamps.push(ts.toISOString());
 
-        t1.push(k1 ? v1 : null);
-        t2.push(k2 ? v2 : null);
-        t3.push(k3 ? v3 : null);
-
         const m1=isHighlightedPoint(ts,'m1'), m2=isHighlightedPoint(ts,'m2');
         const hc=m1?'#8b5cf6':m2?'#f59e0b':null;
-        t1h.push(hc); t2h.push(hc); t3h.push(hc);
+
+        cfg.columns.forEach((col, i) => {
+            series[i].push(checks[i] ? vals[i] : null);
+            seriesH[i].push(hc);
+        });
     }
 
     const canvas=document.getElementById('tempChart');
@@ -1010,15 +1069,17 @@ function renderChart() {
         pointHoverRadius: 8
     });
 
-    const dsConfigs = [];
-    if(k1) dsConfigs.push({ ds: mkDs('Kettle 1 (CH1)', t1, t1h, 'rgb(239,68,68)'),   data: t1, hArr: t1h });
-    if(k2) dsConfigs.push({ ds: mkDs('Kettle 2 (CH2)', t2, t2h, 'rgb(59,130,246)'),  data: t2, hArr: t2h });
-    if(k3) dsConfigs.push({ ds: mkDs('Kettle 3 (CH3)', t3, t3h, 'rgb(16,185,129)'),  data: t3, hArr: t3h });
-    const datasets = dsConfigs.map(d => d.ds);
+    const datasets = [];
+    cfg.columns.forEach((col, i) => {
+        if (checks[i]) datasets.push(mkDs(cfg.labels[i], series[i], seriesH[i], cfg.colors[i]));
+    });
 
     // Fast path: patch existing chart in-place (no destroy/rebuild) when dataset
-    // count matches — used during hold-scroll so every tick is instant.
-    if (chart && chart.data.datasets.length === datasets.length) {
+    // count AND labels match — used during hold-scroll so every tick is instant.
+    const sameShape = chart && chart.data.datasets.length === datasets.length &&
+        chart.data.datasets.every((d, i) => d.label === datasets[i].label);
+
+    if (sameShape) {
         chart.data.labels = timestamps;
         datasets.forEach((ds, i) => {
             chart.data.datasets[i].data             = ds.data;
@@ -1031,12 +1092,12 @@ function renderChart() {
         chart.update('none');
         canvas.onclick = handleChartClick;
         attachCanvasInteraction(canvas);
-        updateKettleStatuses();
+        if (activeTab === 'kettle') updateKettleStatuses();
         requestAnimationFrame(() => drawMeasurementOverlay());
         return;
     }
 
-    // Full rebuild (first load, or kettle selection changed)
+    // Full rebuild (first load, tab switch, or channel selection changed)
     if(chart){chart.destroy();chart=null;}
     const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
 
@@ -1065,7 +1126,7 @@ function renderChart() {
     });
     canvas.onclick = handleChartClick;
     attachCanvasInteraction(canvas);
-    updateKettleStatuses();
+    if (activeTab === 'kettle') updateKettleStatuses();
     requestAnimationFrame(() => drawMeasurementOverlay());
 }
 
@@ -1131,13 +1192,16 @@ function updateStats(data) {
     const first=parseTimestamp(data[0][0].toString()),last=parseTimestamp(data[data.length-1][0].toString());
     document.getElementById('timeRange').textContent=((last-first)/3600000).toFixed(1)+'h';
     document.getElementById('dataPoints').textContent=data.length;
-    for(let k=1;k<=3;k++){
+    const cfg = TAB_CONFIGS[activeTab];
+    cfg.columns.forEach(k => {
         let high=-Infinity,low=Infinity;
         data.forEach(r=>{const v=parseFloat(r[k]);if(!isNaN(v)&&v!==-999){if(v>high)high=v;if(v<low)low=v;}});
-        document.getElementById(`highTemp${k}`).textContent=(high!==-Infinity?high.toFixed(2):'--')+'°C';
-        document.getElementById(`lowTemp${k}`).textContent=(low!==Infinity?low.toFixed(2):'--')+'°C';
-    }
-    updateBatchCounts(data);
+        const highEl = document.getElementById(`highTemp${k}`);
+        const lowEl  = document.getElementById(`lowTemp${k}`);
+        if (highEl) highEl.textContent=(high!==-Infinity?high.toFixed(2):'--')+'°C';
+        if (lowEl)  lowEl.textContent =(low!==Infinity?low.toFixed(2):'--')+'°C';
+    });
+    if (activeTab === 'kettle') updateBatchCounts(data);
 }
 
 // ─── MEASUREMENT ─────────────────────────────────────────────────────────────
