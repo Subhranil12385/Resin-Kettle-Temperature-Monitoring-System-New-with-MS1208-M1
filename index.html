@@ -466,7 +466,37 @@ const TAB_CONFIGS = {
 
 function switchTab(tab) {
     if (activeTab === tab) return;
+
+    // Stash the outgoing tab's own measurement/arrow state so it doesn't bleed
+    // into the tab we're switching to (this is what stopped the Outlet tab's
+    // auto-snapped 50°C→40°C arrows from also showing up on the Kettle tab).
+    measurementStateByTab[activeTab] = {
+        activeMeasurementsCount,
+        currentMeasurement,
+        measurementCountLockedByUser,
+        measurements: cloneMeasurements(measurements),
+        highlightedPoints: cloneHighlightedPoints(highlightedPoints)
+    };
+
     activeTab = tab;
+
+    // Restore the incoming tab's own state (or start fresh with just M1 if it
+    // has never been visited/measured on before).
+    const savedState = measurementStateByTab[tab];
+    if (savedState) {
+        activeMeasurementsCount      = savedState.activeMeasurementsCount;
+        currentMeasurement           = savedState.currentMeasurement;
+        measurementCountLockedByUser = savedState.measurementCountLockedByUser;
+        measurements                 = cloneMeasurements(savedState.measurements);
+        highlightedPoints            = cloneHighlightedPoints(savedState.highlightedPoints);
+    } else {
+        activeMeasurementsCount      = 1;
+        currentMeasurement           = 1;
+        measurementCountLockedByUser = false;
+        measurements                 = defaultMeasurements();
+        highlightedPoints            = defaultHighlightedPoints();
+    }
+    renderMeasurementUI();
 
     document.getElementById('tabKettleBtn').classList.toggle('active', tab === 'kettle');
     document.getElementById('tabOutletBtn').classList.toggle('active', tab === 'outlet');
@@ -523,6 +553,26 @@ let measurements = [
 ];
 
 let highlightedPoints = { m1: [], m2: [], m3: [], m4: [], m5: [], m6: [] };
+
+// ── Per-tab measurement/arrow state ───────────────────────────────────────────
+// Keeps the Outlet tab's auto-snapped 50°C→40°C batch arrows completely separate
+// from the Resin Kettle tab, so they no longer bleed across when switching tabs.
+let measurementStateByTab = { kettle: null, outlet: null };
+
+function cloneMeasurements(arr) {
+    return arr.map(m => ({ ...m }));
+}
+function cloneHighlightedPoints(hp) {
+    const out = {};
+    for (const k in hp) out[k] = (hp[k] || []).map(p => ({ ...p }));
+    return out;
+}
+function defaultMeasurements() {
+    return MEASUREMENT_CONFIGS.map((c, i) => ({ id: i + 1, start: null, end: null, isMeasuring: false }));
+}
+function defaultHighlightedPoints() {
+    return { m1: [], m2: [], m3: [], m4: [], m5: [], m6: [] };
+}
 
 // ── Outlet Cooling Settings State ─────────────────────────────────────────────
 let outletSettings = {
@@ -2304,8 +2354,9 @@ async function saveOutletSettings() {
         }
         applyLoadedSettings(outletSettings);
 
-        // Re-run batch analysis with new thresholds
-        if (displayData && displayData.length >= 2) {
+        // Re-run batch analysis with new thresholds (Outlet tab only — this
+        // button only exists on that tab's settings card anyway)
+        if (activeTab === 'outlet' && displayData && displayData.length >= 2) {
             updateOutletBatchAnalysis(displayData);
             renderChart();
         }
