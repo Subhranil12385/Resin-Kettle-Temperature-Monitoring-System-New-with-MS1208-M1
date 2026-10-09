@@ -185,7 +185,7 @@
 
     <div class="view-tabs">
         <button class="tab-btn active" id="tabKettleBtn" onclick="switchTab('kettle')">🍯 Kettle Temperatures</button>
-        <button class="tab-btn" id="tabOutletBtn" onclick="switchTab('outlet')">🛢️ Outlet Temperature</button>
+        <button class="tab-btn" id="tabOutletBtn" onclick="switchTab('outlet')">🛢️ Outlet &amp; Cooling Tower</button>
     </div>
 
     <div class="status-card">
@@ -210,6 +210,8 @@
         </div>
         <div class="current-temps" id="outletTempsRow" style="display:none;">
             <div class="temp-box" id="tempBox4"><h3>Kettle 2 Outlet (CH4)</h3><div class="value" id="temp4">--°C</div><div class="temp-high-low"><span class="low" id="lowTemp4">--°C</span><span class="high" id="highTemp4">--°C</span></div></div>
+            <div class="temp-box" id="tempBox5"><h3>Inlet from Cooling Tower (CH5)</h3><div class="value" id="temp5">--°C</div><div class="temp-high-low"><span class="low" id="lowTemp5">--°C</span><span class="high" id="highTemp5">--°C</span></div></div>
+            <div class="temp-box" id="tempBox8"><h3>Outlet to Cooling Tower (CH8)</h3><div class="value" id="temp8">--°C</div><div class="temp-high-low"><span class="low" id="lowTemp8">--°C</span><span class="high" id="highTemp8">--°C</span></div></div>
         </div>
         <div class="current-temps" id="batchRow" style="margin-top:12px;">
             <div class="batch-box" id="batchBox1"><div class="batch-icon">🏭</div><div class="batch-label">Kettle 1 Batches</div><div class="batch-value" id="batchCount1">--</div><div class="batch-sub">in loaded range</div></div>
@@ -457,10 +459,10 @@ const TAB_CONFIGS = {
         checkboxIds: ['kettle1Check', 'kettle2Check', 'kettle3Check']
     },
     outlet: {
-        columns: [4],
-        labels: ['Kettle 2 Outlet (CH4)'],
-        colors: ['rgb(249,115,22)'],
-        checkboxIds: [null] // always plotted, no toggle
+        columns: [4, 5, 8],
+        labels: ['Kettle 2 Outlet (CH4)', 'Inlet from Cooling Tower (CH5)', 'Outlet to Cooling Tower (CH8)'],
+        colors: ['rgb(249,115,22)', 'rgb(14,165,233)', 'rgb(168,85,247)'],
+        checkboxIds: [null, null, null] // always plotted, no toggle
     }
 };
 
@@ -512,7 +514,7 @@ function switchTab(tab) {
     if (outletBatchSec) outletBatchSec.style.display               = (tab === 'outlet') ? 'block' : 'none';
 
     document.getElementById('chartSectionTitle').textContent =
-        (tab === 'kettle') ? '📈 Kettle Temperature Trends' : '📈 Outlet Temperature Trends';
+        (tab === 'kettle') ? '📈 Kettle Temperature Trends' : '📈 Outlet & Cooling Tower Temperature Trends';
 
     // Force a full chart rebuild (dataset count/labels/colors differ between tabs)
     if (chart) { chart.destroy(); chart = null; }
@@ -795,6 +797,7 @@ async function silentLiveRefresh() {
                         parseTimestamp(data.statusInfo.lastTimestamp.toString()).toLocaleString();
                 updateTempBox(1,data.statusInfo.temp1); updateTempBox(2,data.statusInfo.temp2); updateTempBox(3,data.statusInfo.temp3);
                 updateTempBox(4,data.statusInfo.temp4);
+                updateTempBox(5,data.statusInfo.temp5); updateTempBox(8,data.statusInfo.temp8);
             }
             // Re-render chart with merged data if current view overlaps live edge
             const sd = document.getElementById('startDate').value;
@@ -1118,6 +1121,8 @@ async function fetchData(startStr, endStr) {
             updateTempBox(2, data.statusInfo.temp2);
             updateTempBox(3, data.statusInfo.temp3);
             updateTempBox(4, data.statusInfo.temp4);
+            updateTempBox(5, data.statusInfo.temp5);
+            updateTempBox(8, data.statusInfo.temp8);
         } else if (allData.length >= 2) {
             const last = allData[allData.length-1];
             const ts = parseTimestamp(last[0]);
